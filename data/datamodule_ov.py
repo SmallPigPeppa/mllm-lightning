@@ -1,9 +1,16 @@
-import lightning as L
-from torch.utils.data import DataLoader
-from datasets import load_dataset, interleave_datasets
-from transformers import AutoProcessor
-from typing import List
+import logging
 import re
+from typing import List, Optional, Tuple
+
+import lightning as L
+from datasets import interleave_datasets, load_dataset
+from PIL import Image
+from torch.utils.data import DataLoader
+from transformers import AutoProcessor
+
+
+LOGGER = logging.getLogger(__name__)
+IMAGE_TOKEN_RE = re.compile(r"<image>\s*")
 
 
 class MultiModalDataModule(L.LightningDataModule):
@@ -26,12 +33,73 @@ class MultiModalDataModule(L.LightningDataModule):
         self.processor = None
         self.train_dataset = None
 
+    @staticmethod
+    def _clean_text(text: Optional[str]) -> str:
+        return IMAGE_TOKEN_RE.sub("", (text or "").strip()).strip()
+
+    @classmethod
+    def _is_valid_multimodal_sample(cls, sample: dict) -> bool:
+        convs = sample.get("conversations") or []
+        if not convs or sample.get("image") is None:
+            return False
+
+        has_user = False
+        has_assistant = False
+        for turn in convs:
+            src = turn.get("from")
+            text = cls._clean_text(turn.get("value"))
+            if src in {"human", "user"}:
+                has_user = True
+            elif src in {"gpt", "assistant"} and text:
+                has_assistant = True
+
+            if has_user and has_assistant:
+                return True
+        return False
+
+    def _build_messages(self, sample: dict) -> Tuple[Optional[list], Optional[Image.Image]]:
+        if not self._is_valid_multimodal_sample(sample):
+            return None, None
+
+        raw_image = sample.get("image")
+        try:
+            image = raw_image.convert("RGB")
+        except Exception as exc:
+            LOGGER.warning("Failed to decode image for sample %s: %s", sample.get("id"), exc)
+            return None, None
+
+        messages = []
+        first_user = True
+        has_assistant = False
+
+        for turn in sample.get("conversations") or []:
+            src = turn.get("from")
+            text = self._clean_text(turn.get("value"))
+
+            if src in {"human", "user"}:
+                content = []
+                if first_user:
+                    content.append({"type": "image"})
+                    first_user = False
+                content.append({"type": "text", "text": text or "Please describe this image."})
+                messages.append({"role": "user", "content": content})
+            elif src in {"gpt", "assistant"} and text:
+                has_assistant = True
+                messages.append(
+                    {"role": "assistant", "content": [{"type": "text", "text": text}]}
+                )
+
+        if not messages or not has_assistant:
+            return None, None
+        return messages, image
+
     def setup(self, stage=None):
         if self.processor is None:
             self.processor = AutoProcessor.from_pretrained(
                 self.hparams.model_name_or_path,
                 trust_remote_code=self.hparams.trust_remote_code,
                 cache_dir=self.hparams.cache_dir,
+                use_fast=True,
             )
             if getattr(self.processor, "tokenizer", None):
                 self.processor.tokenizer.padding_side = "right"
@@ -49,10 +117,16 @@ class MultiModalDataModule(L.LightningDataModule):
                 cache_dir=self.hparams.cache_dir,
             )
 
-            ds = ds.shuffle(
-                seed=self.hparams.seed,
-                buffer_size=cfg.get("shuffle_buffer_size", self.hparams.shuffle_buffer_size),
-            ) if is_streaming else ds.shuffle(seed=self.hparams.seed)
+            ds = (
+                ds.shuffle(
+                    seed=self.hparams.seed,
+                    buffer_size=cfg.get("shuffle_buffer_size", self.hparams.shuffle_buffer_size),
+                )
+                if is_streaming
+                else ds.shuffle(seed=self.hparams.seed)
+            )
+
+            ds = ds.filter(self._is_valid_multimodal_sample)
 
             datasets.append(ds)
             weights.append(float(cfg.get("weight", 1.0)))
@@ -68,102 +142,12 @@ class MultiModalDataModule(L.LightningDataModule):
                 stopping_strategy=self.hparams.stopping_strategy,
             )
 
-    # def collate_fn(self, batch):
-    #     images, texts, sample_ids = [], [], []
-    #
-    #     for sample in batch:
-    #         if sample.get("image") is None or sample.get("conversations") is None:
-    #             continue
-    #
-    #         messages = []
-    #         first_user, has_assistant = True, False
-    #
-    #         for turn in sample["conversations"]:
-    #             role = "user" if turn.get("from") in {"human", "user"} else "assistant"
-    #             text = re.sub(r"<image>\s*", "", (turn.get("value") or "").strip()).strip()
-    #
-    #             if role == "user":
-    #                 content = []
-    #                 if first_user:
-    #                     content.append({"type": "image"})
-    #                     first_user = False
-    #                 content.append({"type": "text", "text": text or "Please describe this image."})
-    #                 messages.append({"role": "user", "content": content})
-    #             elif text:
-    #                 has_assistant = True
-    #                 messages.append({
-    #                     "role": "assistant",
-    #                     "content": [{"type": "text", "text": text}],
-    #                 })
-    #
-    #         if not messages or not has_assistant:
-    #             continue
-    #
-    #         texts.append(
-    #             self.processor.apply_chat_template(
-    #                 messages,
-    #                 tokenize=False,
-    #                 add_generation_prompt=False,
-    #             )
-    #         )
-    #         images.append(sample["image"].convert("RGB"))
-    #         sample_ids.append(sample.get("id"))
-    #
-    #     if not images:
-    #         raise RuntimeError("No valid samples found in batch.")
-    #
-    #     model_inputs = self.processor(
-    #         images=images,
-    #         text=texts,
-    #         padding=True,
-    #         truncation=True,
-    #         max_length=self.hparams.max_length,
-    #         return_tensors="pt",
-    #     )
-    #
-    #     labels = model_inputs["input_ids"].clone()
-    #     labels = labels.masked_fill(model_inputs["attention_mask"] == 0, -100)
-    #
-    #     model_inputs["labels"] = labels
-    #     model_inputs["sample_ids"] = sample_ids
-    #     return model_inputs
-
     def collate_fn(self, batch):
         images, texts, sample_ids = [], [], []
 
         for sample in batch:
-            convs = sample.get("conversations") or []
-            if not convs:
-                continue
-
-            has_image = sample.get("image") is not None
-            messages = []
-            first_user = True
-            has_assistant = False
-
-            for turn in convs:
-                src = turn.get("from")
-                text = re.sub(r"<image>\s*", "", (turn.get("value") or "").strip()).strip()
-
-                if src in {"human", "user"}:
-                    content = []
-
-                    # 只有真的有图，才插 image token
-                    if first_user and has_image:
-                        content.append({"type": "image"})
-
-                    first_user = False
-                    content.append({"type": "text", "text": text or ""})
-                    messages.append({"role": "user", "content": content})
-
-                elif src in {"gpt", "assistant"} and text:
-                    has_assistant = True
-                    messages.append({
-                        "role": "assistant",
-                        "content": [{"type": "text", "text": text}],
-                    })
-
-            if not messages or not has_assistant:
+            messages, image = self._build_messages(sample)
+            if messages is None or image is None:
                 continue
 
             texts.append(
@@ -173,34 +157,24 @@ class MultiModalDataModule(L.LightningDataModule):
                     add_generation_prompt=False,
                 )
             )
-
-            if has_image:
-                images.append(sample["image"].convert("RGB"))
-
+            images.append(image)
             sample_ids.append(sample.get("id"))
 
-        if not texts:
-            raise RuntimeError("No valid samples found in batch.")
+        if not images:
+            batch_ids = [sample.get("id") for sample in batch if isinstance(sample, dict)]
+            raise RuntimeError(
+                "No valid multimodal samples found in batch after filtering/collation. "
+                f"sample_ids={batch_ids}"
+            )
 
-        # 全文本 batch
-        if len(images) == 0:
-            model_inputs = self.processor(
-                text=texts,
-                padding=True,
-                truncation=True,
-                max_length=self.hparams.max_length,
-                return_tensors="pt",
-            )
-        else:
-            # 混合 batch / 全图文 batch
-            model_inputs = self.processor(
-                images=images,
-                text=texts,
-                padding=True,
-                truncation=True,
-                max_length=self.hparams.max_length,
-                return_tensors="pt",
-            )
+        model_inputs = self.processor(
+            images=images,
+            text=texts,
+            padding=True,
+            truncation=True,
+            max_length=self.hparams.max_length,
+            return_tensors="pt",
+        )
 
         labels = model_inputs["input_ids"].clone()
         labels = labels.masked_fill(model_inputs["attention_mask"] == 0, -100)
