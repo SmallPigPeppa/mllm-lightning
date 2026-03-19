@@ -36,7 +36,7 @@ def main():
                 "path": "lmms-lab/LLaVA-NeXT-Data",
                 "split": "train",
                 "weight": 1.0,
-                "streaming": False,
+                "streaming": True,
             }
         ],
         batch_size=1,
@@ -57,6 +57,7 @@ def main():
         trust_remote_code=True,
         use_gradient_checkpointing=True,
         torch_dtype=model_dtype,
+        debug_batch_dir=os.path.join(output_dir, "batch_debug"),
     )
 
     ckpt_callback = ModelCheckpoint(

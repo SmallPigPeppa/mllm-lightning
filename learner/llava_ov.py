@@ -1,16 +1,21 @@
-import torch
+import json
+import os
+
 import lightning as L
-from transformers import AutoProcessor, LlavaOnevisionForConditionalGeneration
+import torch
+from transformers import LlavaOnevisionForConditionalGeneration
+
 
 class LlavaSFTModule(L.LightningModule):
     def __init__(
-            self,
-            model_name_or_path: str,
-            lr: float = 1e-5,
-            weight_decay: float = 0.01,
-            trust_remote_code: bool = True,
-            use_gradient_checkpointing: bool = True,
-            torch_dtype: torch.dtype = torch.bfloat16,
+        self,
+        model_name_or_path: str,
+        lr: float = 1e-5,
+        weight_decay: float = 0.01,
+        trust_remote_code: bool = True,
+        use_gradient_checkpointing: bool = True,
+        torch_dtype: torch.dtype = torch.bfloat16,
+        debug_batch_dir: str | None = None,
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["torch_dtype"])
@@ -26,8 +31,28 @@ class LlavaSFTModule(L.LightningModule):
         if use_gradient_checkpointing:
             self.model.gradient_checkpointing_enable()
 
+    def _dump_batch_debug(self, batch, batch_idx: int):
+        if not self.hparams.debug_batch_dir:
+            return
+        os.makedirs(self.hparams.debug_batch_dir, exist_ok=True)
+        path = os.path.join(self.hparams.debug_batch_dir, f"rank{self.global_rank}.jsonl")
+        record = {
+            "batch_idx": batch_idx,
+            "sample_ids": batch.get("sample_ids"),
+            "keys": list(batch.keys()),
+            "tensor_shapes": {
+                k: list(v.shape)
+                for k, v in batch.items()
+                if torch.is_tensor(v)
+            },
+        }
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
     def training_step(self, batch, batch_idx):
-        loss = self.model(**{k: v for k, v in batch.items() if k != "sample_ids"}).loss
+        self._dump_batch_debug(batch, batch_idx)
+        model_inputs = {k: v for k, v in batch.items() if torch.is_tensor(v)}
+        loss = self.model(**model_inputs).loss
         self.log(
             "train/loss",
             loss,
@@ -41,12 +66,11 @@ class LlavaSFTModule(L.LightningModule):
 
     def configure_optimizers(self):
         decay_params, no_decay_params = [], []
-
         for name, param in self.named_parameters():
             if not param.requires_grad:
                 continue
-            (no_decay_params if param.ndim < 2 or "bias" in name or "norm" in name.lower() else decay_params).append(
-                param)
+            target = no_decay_params if param.ndim < 2 or "bias" in name or "norm" in name.lower() else decay_params
+            target.append(param)
 
         return torch.optim.AdamW(
             [
@@ -56,5 +80,3 @@ class LlavaSFTModule(L.LightningModule):
             lr=self.hparams.lr,
             betas=(0.9, 0.95),
         )
-
-
