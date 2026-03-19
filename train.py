@@ -3,7 +3,7 @@ import torch
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.strategies import DeepSpeedStrategy
+from lightning.pytorch.strategies import DeepSpeedStrategy,DDPStrategy
 
 from data.datamodule_ov import MultiModalDataModule
 from learner.llava_ov import LlavaSFTModule
@@ -14,6 +14,21 @@ def main():
     model_name = "/ppio_net0/code/mllm-lightning/mllm/llava-onevision-qwen2-0.5b-ov-hf"
     output_dir = "./outputs/llava_onevision_05b_zero3_sft_1epoch"
 
+    # dm = MultiModalDataModule(
+    #     model_name_or_path=model_name,
+    #     train_datasets=[
+    #         {
+    #             "path": "lmms-lab/LLaVA-NeXT-Data",
+    #             "split": "train",
+    #             "weight": 1.0,
+    #             "streaming": False,
+    #         }
+    #     ],
+    #     batch_size=1,
+    #     num_workers=2,
+    #     max_length=2048,
+    #     streaming=True,
+    # )
     dm = MultiModalDataModule(
         model_name_or_path=model_name,
         train_datasets=[
@@ -28,6 +43,9 @@ def main():
         num_workers=2,
         max_length=2048,
         streaming=True,
+        skip_text_only=True,
+        debug_samples=True,
+        debug_log_dir=os.path.join(output_dir, "sample_debug"),
     )
 
     model_dtype = torch.bfloat16
@@ -51,25 +69,9 @@ def main():
         monitor=None,
     )
 
-    strategy = DeepSpeedStrategy(
-        config={
-            "zero_optimization": {
-                "stage": 3,
-                "contiguous_gradients": True,
-                "overlap_comm": True,
-                "reduce_scatter": True,
-                "allgather_partitions": True,
-                "allgather_bucket_size": 2e8,
-                "reduce_bucket_size": 2e8,
-            },
-            "gradient_clipping": 1.0,
-        }
-    )
-
     trainer = L.Trainer(
         accelerator="gpu",
-        # strategy=strategy,
-        strategy="auto",
+        strategy=DDPStrategy(find_unused_parameters=True),
         devices="auto",
         max_steps=100,
         precision="bf16-mixed",
