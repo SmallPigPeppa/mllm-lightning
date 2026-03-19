@@ -1,16 +1,24 @@
 from huggingface_hub import snapshot_download
 
 WORKERS = 16
+BASE_DIR = "/ppio_net0/code/download"
+
+
+def download_model(repo_id: str, base_dir: str = BASE_DIR) -> str:
+    # Save to: <base_dir>/<repo_name>
+    local_dir = base_dir / repo_id.rsplit("/", 1)[-1]
+    local_dir.mkdir(parents=True, exist_ok=True)
+
+    return snapshot_download(
+        repo_id=repo_id,
+        local_dir=str(local_dir),
+        max_workers=WORKERS,
+    )
+
 
 if __name__ == "__main__":
-    snapshot_download(
-        repo_id="Qwen/Qwen3-VL-2B-Instruct",
-        local_dir="../download/Qwen3-VL-2B-Instruct",
-        max_workers=WORKERS,
-    )
-
-    snapshot_download(
-        repo_id="llava-hf/llava-onevision-qwen2-0.5b-ov-hf",
-        local_dir="../download/llava-onevision-qwen2-0.5b-ov-hf",
-        max_workers=WORKERS,
-    )
+    for repo_id in [
+        "Qwen/Qwen3-VL-2B-Instruct",
+        "llava-hf/llava-onevision-qwen2-0.5b-ov-hf",
+    ]:
+        download_model(repo_id)
