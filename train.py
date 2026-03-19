@@ -23,18 +23,16 @@ def main():
                 "path": "lmms-lab/LLaVA-NeXT-Data",
                 "split": "train",
                 "weight": 1.0,
-                "streaming": True,
+                "streaming": False,
                 "shuffle_buffer_size": 10000,
             }
         ],
         batch_size=1,
-        num_workers=2,
+        num_workers=8,
         max_length=2048,
         debug_print_samples=True,
         debug_max_chars=400,
     )
-
-    model_dtype = torch.bfloat16
 
     lit_model = LlavaSFTModule(
         model_name_or_path=model_name,
@@ -42,7 +40,7 @@ def main():
         weight_decay=0.01,
         trust_remote_code=True,
         use_gradient_checkpointing=True,
-        torch_dtype=model_dtype,
+        torch_dtype=torch.bfloat16,
     )
 
     ckpt_callback = ModelCheckpoint(
@@ -59,7 +57,7 @@ def main():
         accelerator="gpu",
         devices="auto",
         strategy=DDPStrategy(find_unused_parameters=True),
-        max_steps=5000,
+        max_steps=500,
         precision="bf16-mixed",
         accumulate_grad_batches=1,
         gradient_clip_val=1.0,
@@ -75,18 +73,6 @@ def main():
     )
 
     trainer.fit(lit_model, datamodule=dm)
-
-    hf_save_dir = os.path.join(output_dir, "hf_model")
-    os.makedirs(hf_save_dir, exist_ok=True)
-
-    trainer.strategy.barrier()
-    if trainer.is_global_zero:
-        lit_model.model.save_pretrained(hf_save_dir)
-        dm.processor.save_pretrained(hf_save_dir)
-    trainer.strategy.barrier()
-
-    print(f"HF weights saved to: {hf_save_dir}")
-    print(f"Lightning checkpoint saved to: {ckpt_callback.last_model_path}")
 
 
 if __name__ == "__main__":
