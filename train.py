@@ -2,12 +2,11 @@ import os
 import torch
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.loggers import CSVLogger
+from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.strategies import DeepSpeedStrategy
 
 from data.datamodule_ov import MultiModalDataModule
 from learner.llava_ov import LlavaSFTModule
-
 
 
 def main():
@@ -52,8 +51,6 @@ def main():
         monitor=None,
     )
 
-    logger = CSVLogger(save_dir=output_dir, name="logs")
-
     strategy = DeepSpeedStrategy(
         config={
             "zero_optimization": {
@@ -74,13 +71,17 @@ def main():
         strategy=strategy,
         devices="auto",
         max_steps=1,
-        precision="bf16-mixed" ,
+        precision="bf16-mixed",
         accumulate_grad_batches=4,
         gradient_clip_val=1.0,
         log_every_n_steps=10,
         num_sanity_val_steps=0,
         callbacks=[ckpt_callback],
-        logger=logger,
+        logger=WandbLogger(
+            name=f"llava_onevision_05b_zero3_sft",
+            project="mllm-lightning",
+            log_model=False,
+        ),
         default_root_dir=output_dir,
     )
 
