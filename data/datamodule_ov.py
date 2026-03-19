@@ -1,94 +1,9 @@
-import json
-import os
-import re
-from typing import Any, Dict, List, Optional
-
 import lightning as L
-from datasets import IterableDataset as HFIterableDataset
-from datasets import interleave_datasets, load_dataset
-from torch.utils.data import DataLoader, IterableDataset, get_worker_info
+from torch.utils.data import DataLoader
+from datasets import load_dataset, interleave_datasets
 from transformers import AutoProcessor
-
-
-def _clean_text(text: Optional[str]) -> str:
-    return re.sub(r"<image>\s*", "", (text or "").strip()).strip()
-
-
-def _has_assistant_answer(convs: List[dict]) -> bool:
-    for turn in convs:
-        if turn.get("from") in {"gpt", "assistant"} and _clean_text(turn.get("value")):
-            return True
-    return False
-
-
-def _sample_record(sample: Dict[str, Any], action: str, reason: Optional[str] = None, chat_text: Optional[str] = None) -> Dict[str, Any]:
-    convs = sample.get("conversations") or []
-    return {
-        "sample_id": sample.get("id"),
-        "action": action,
-        "reason": reason,
-        "has_image": sample.get("image") is not None,
-        "num_turns": len(convs),
-        "conversations": [
-            {
-                "from": turn.get("from"),
-                "value": turn.get("value"),
-            }
-            for turn in convs
-        ],
-        "chat_text": chat_text,
-    }
-
-
-def _append_jsonl(log_dir: str, record: Dict[str, Any]) -> None:
-    if not log_dir:
-        return
-
-    os.makedirs(log_dir, exist_ok=True)
-    worker = get_worker_info()
-    worker_id = worker.id if worker is not None else 0
-    rank = os.environ.get("RANK", "0")
-    path = os.path.join(log_dir, f"rank{rank}_worker{worker_id}.jsonl")
-
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-
-class StreamingSampleFilter(IterableDataset):
-    def __init__(self, base_dataset, skip_text_only: bool = False, debug_samples: bool = False, debug_log_dir: Optional[str] = None):
-        super().__init__()
-        self.base_dataset = base_dataset
-        self.skip_text_only = skip_text_only
-        self.debug_samples = debug_samples
-        self.debug_log_dir = debug_log_dir
-
-    def __iter__(self):
-        for sample in self.base_dataset:
-            convs = sample.get("conversations") or []
-            has_image = sample.get("image") is not None
-
-            reason = None
-            if not convs:
-                reason = "empty_conversations"
-            elif self.skip_text_only and not has_image:
-                reason = "skip_text_only"
-            elif not _has_assistant_answer(convs):
-                reason = "no_assistant_answer"
-
-            if self.debug_samples:
-                _append_jsonl(
-                    self.debug_log_dir,
-                    _sample_record(
-                        sample,
-                        action="skip" if reason else "yield",
-                        reason=reason,
-                    ),
-                )
-
-            if reason is not None:
-                continue
-
-            yield sample
+from typing import List
+import re
 
 
 class MultiModalDataModule(L.LightningDataModule):
@@ -105,9 +20,6 @@ class MultiModalDataModule(L.LightningDataModule):
         stopping_strategy: str = "all_exhausted",
         trust_remote_code: bool = True,
         cache_dir: str = "/ppio_net0/huggingface",
-        skip_text_only: bool = False,
-        debug_samples: bool = False,
-        debug_log_dir: Optional[str] = None,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -156,100 +68,122 @@ class MultiModalDataModule(L.LightningDataModule):
                 stopping_strategy=self.hparams.stopping_strategy,
             )
 
-        if isinstance(self.train_dataset, HFIterableDataset) and (
-            self.hparams.skip_text_only or self.hparams.debug_samples
-        ):
-            self.train_dataset = StreamingSampleFilter(
-                self.train_dataset,
-                skip_text_only=self.hparams.skip_text_only,
-                debug_samples=self.hparams.debug_samples,
-                debug_log_dir=self.hparams.debug_log_dir,
-            )
-
-    def _build_messages(self, sample: Dict[str, Any]):
-        convs = sample.get("conversations") or []
-        has_image = sample.get("image") is not None
-        messages = []
-        first_user = True
-        has_assistant = False
-
-        for turn in convs:
-            src = turn.get("from")
-            text = _clean_text(turn.get("value"))
-
-            if src in {"human", "user"}:
-                content = []
-                if first_user and has_image:
-                    content.append({"type": "image"})
-                first_user = False
-                content.append({"type": "text", "text": text or ""})
-                messages.append({"role": "user", "content": content})
-            elif src in {"gpt", "assistant"} and text:
-                has_assistant = True
-                messages.append(
-                    {
-                        "role": "assistant",
-                        "content": [{"type": "text", "text": text}],
-                    }
-                )
-
-        return messages, has_image, has_assistant
+    # def collate_fn(self, batch):
+    #     images, texts, sample_ids = [], [], []
+    #
+    #     for sample in batch:
+    #         if sample.get("image") is None or sample.get("conversations") is None:
+    #             continue
+    #
+    #         messages = []
+    #         first_user, has_assistant = True, False
+    #
+    #         for turn in sample["conversations"]:
+    #             role = "user" if turn.get("from") in {"human", "user"} else "assistant"
+    #             text = re.sub(r"<image>\s*", "", (turn.get("value") or "").strip()).strip()
+    #
+    #             if role == "user":
+    #                 content = []
+    #                 if first_user:
+    #                     content.append({"type": "image"})
+    #                     first_user = False
+    #                 content.append({"type": "text", "text": text or "Please describe this image."})
+    #                 messages.append({"role": "user", "content": content})
+    #             elif text:
+    #                 has_assistant = True
+    #                 messages.append({
+    #                     "role": "assistant",
+    #                     "content": [{"type": "text", "text": text}],
+    #                 })
+    #
+    #         if not messages or not has_assistant:
+    #             continue
+    #
+    #         texts.append(
+    #             self.processor.apply_chat_template(
+    #                 messages,
+    #                 tokenize=False,
+    #                 add_generation_prompt=False,
+    #             )
+    #         )
+    #         images.append(sample["image"].convert("RGB"))
+    #         sample_ids.append(sample.get("id"))
+    #
+    #     if not images:
+    #         raise RuntimeError("No valid samples found in batch.")
+    #
+    #     model_inputs = self.processor(
+    #         images=images,
+    #         text=texts,
+    #         padding=True,
+    #         truncation=True,
+    #         max_length=self.hparams.max_length,
+    #         return_tensors="pt",
+    #     )
+    #
+    #     labels = model_inputs["input_ids"].clone()
+    #     labels = labels.masked_fill(model_inputs["attention_mask"] == 0, -100)
+    #
+    #     model_inputs["labels"] = labels
+    #     model_inputs["sample_ids"] = sample_ids
+    #     return model_inputs
 
     def collate_fn(self, batch):
         images, texts, sample_ids = [], [], []
 
         for sample in batch:
-            messages, has_image, has_assistant = self._build_messages(sample)
-
-            if self.hparams.skip_text_only and not has_image:
-                if self.hparams.debug_samples:
-                    _append_jsonl(
-                        self.hparams.debug_log_dir,
-                        _sample_record(sample, action="skip_in_collate", reason="skip_text_only_guard"),
-                    )
+            convs = sample.get("conversations") or []
+            if not convs:
                 continue
+
+            has_image = sample.get("image") is not None
+            messages = []
+            first_user = True
+            has_assistant = False
+
+            for turn in convs:
+                src = turn.get("from")
+                text = re.sub(r"<image>\s*", "", (turn.get("value") or "").strip()).strip()
+
+                if src in {"human", "user"}:
+                    content = []
+
+                    # 只有真的有图，才插 image token
+                    if first_user and has_image:
+                        content.append({"type": "image"})
+
+                    first_user = False
+                    content.append({"type": "text", "text": text or ""})
+                    messages.append({"role": "user", "content": content})
+
+                elif src in {"gpt", "assistant"} and text:
+                    has_assistant = True
+                    messages.append({
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": text}],
+                    })
 
             if not messages or not has_assistant:
-                if self.hparams.debug_samples:
-                    _append_jsonl(
-                        self.hparams.debug_log_dir,
-                        _sample_record(sample, action="skip_in_collate", reason="invalid_messages"),
-                    )
                 continue
 
-            chat_text = self.processor.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=False,
+            texts.append(
+                self.processor.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=False,
+                )
             )
 
-            if self.hparams.debug_samples:
-                _append_jsonl(
-                    self.hparams.debug_log_dir,
-                    _sample_record(sample, action="use", chat_text=chat_text),
-                )
-
-            texts.append(chat_text)
-            sample_ids.append(sample.get("id"))
             if has_image:
                 images.append(sample["image"].convert("RGB"))
 
-        if not texts:
-            raise RuntimeError(
-                "All samples in the current batch were skipped. "
-                "For streaming data, prefer batch_size=1 together with skip_text_only=True."
-            )
+            sample_ids.append(sample.get("id"))
 
-        if len(images) == len(texts):
-            model_inputs = self.processor(
-                images=images if images else None,
-                text=texts,
-                padding=True,
-                truncation=True,
-                max_length=self.hparams.max_length,
-                return_tensors="pt",
-            )
-        elif len(images) == 0:
+        if not texts:
+            raise RuntimeError("No valid samples found in batch.")
+
+        # 全文本 batch
+        if len(images) == 0:
             model_inputs = self.processor(
                 text=texts,
                 padding=True,
@@ -258,14 +192,19 @@ class MultiModalDataModule(L.LightningDataModule):
                 return_tensors="pt",
             )
         else:
-            raise RuntimeError(
-                f"Mixed text-only and multimodal samples in one batch are not supported: "
-                f"num_texts={len(texts)}, num_images={len(images)}. "
-                "Use batch_size=1 or enable skip_text_only=True."
+            # 混合 batch / 全图文 batch
+            model_inputs = self.processor(
+                images=images,
+                text=texts,
+                padding=True,
+                truncation=True,
+                max_length=self.hparams.max_length,
+                return_tensors="pt",
             )
 
         labels = model_inputs["input_ids"].clone()
         labels = labels.masked_fill(model_inputs["attention_mask"] == 0, -100)
+
         model_inputs["labels"] = labels
         model_inputs["sample_ids"] = sample_ids
         return model_inputs

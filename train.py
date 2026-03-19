@@ -14,21 +14,6 @@ def main():
     model_name = "/ppio_net0/code/mllm-lightning/mllm/llava-onevision-qwen2-0.5b-ov-hf"
     output_dir = "./outputs/llava_onevision_05b_zero3_sft_1epoch"
 
-    # dm = MultiModalDataModule(
-    #     model_name_or_path=model_name,
-    #     train_datasets=[
-    #         {
-    #             "path": "lmms-lab/LLaVA-NeXT-Data",
-    #             "split": "train",
-    #             "weight": 1.0,
-    #             "streaming": False,
-    #         }
-    #     ],
-    #     batch_size=1,
-    #     num_workers=2,
-    #     max_length=2048,
-    #     streaming=True,
-    # )
     dm = MultiModalDataModule(
         model_name_or_path=model_name,
         train_datasets=[
@@ -43,9 +28,6 @@ def main():
         num_workers=2,
         max_length=2048,
         streaming=True,
-        skip_text_only=True,
-        debug_samples=True,
-        debug_log_dir=os.path.join(output_dir, "sample_debug"),
     )
 
     model_dtype = torch.bfloat16
@@ -57,7 +39,6 @@ def main():
         trust_remote_code=True,
         use_gradient_checkpointing=True,
         torch_dtype=model_dtype,
-        debug_batch_dir=os.path.join(output_dir, "batch_debug"),
     )
 
     ckpt_callback = ModelCheckpoint(
