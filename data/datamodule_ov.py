@@ -67,66 +67,6 @@ class MultiModalDataModule(L.LightningDataModule):
                 stopping_strategy=self.hparams.stopping_strategy,
             )
 
-    # def collate_fn(self, batch):
-    #     images, texts, sample_ids = [], [], []
-    #
-    #     for sample in batch:
-    #         if sample.get("image") is None or sample.get("conversations") is None:
-    #             continue
-    #
-    #         messages = []
-    #         first_user, has_assistant = True, False
-    #
-    #         for turn in sample["conversations"]:
-    #             role = "user" if turn.get("from") in {"human", "user"} else "assistant"
-    #             text = re.sub(r"<image>\s*", "", (turn.get("value") or "").strip()).strip()
-    #
-    #             if role == "user":
-    #                 content = []
-    #                 if first_user:
-    #                     content.append({"type": "image"})
-    #                     first_user = False
-    #                 content.append({"type": "text", "text": text or "Please describe this image."})
-    #                 messages.append({"role": "user", "content": content})
-    #             elif text:
-    #                 has_assistant = True
-    #                 messages.append({
-    #                     "role": "assistant",
-    #                     "content": [{"type": "text", "text": text}],
-    #                 })
-    #
-    #         if not messages or not has_assistant:
-    #             continue
-    #
-    #         texts.append(
-    #             self.processor.apply_chat_template(
-    #                 messages,
-    #                 tokenize=False,
-    #                 add_generation_prompt=False,
-    #             )
-    #         )
-    #         images.append(sample["image"].convert("RGB"))
-    #         sample_ids.append(sample.get("id"))
-    #
-    #     if not images:
-    #         raise RuntimeError("No valid samples found in batch.")
-    #
-    #     model_inputs = self.processor(
-    #         images=images,
-    #         text=texts,
-    #         padding=True,
-    #         truncation=True,
-    #         max_length=self.hparams.max_length,
-    #         return_tensors="pt",
-    #     )
-    #
-    #     labels = model_inputs["input_ids"].clone()
-    #     labels = labels.masked_fill(model_inputs["attention_mask"] == 0, -100)
-    #
-    #     model_inputs["labels"] = labels
-    #     model_inputs["sample_ids"] = sample_ids
-    #     return model_inputs
-
     def collate_fn(self, batch):
         images, texts, sample_ids = [], [], []
 

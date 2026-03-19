@@ -21,7 +21,7 @@ def main():
                 "path": "lmms-lab/LLaVA-NeXT-Data",
                 "split": "train",
                 "weight": 1.0,
-                "streaming": True,
+                "streaming": False,
             }
         ],
         batch_size=1,
