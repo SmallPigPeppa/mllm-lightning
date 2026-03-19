@@ -7,5 +7,6 @@ wandb
 deepspeed
 transformers
 datasets
+huggingface
 
 
