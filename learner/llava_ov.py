@@ -41,19 +41,19 @@ class LlavaSFTModule(L.LightningModule):
             loss_text, bs_text = self._forward_one(batch["text_batch"])
             total_loss = loss_text * bs_text if total_loss is None else total_loss + loss_text * bs_text
             total_bs += bs_text
-            self.log("train/loss_text", loss_text, prog_bar=False, on_step=True, on_epoch=True, batch_size=bs_text, sync_dist=False)
+            self.log("train/loss_text", loss_text, prog_bar=False, on_step=True, batch_size=bs_text, sync_dist=True)
 
         if batch["mm_batch"] is not None:
             loss_mm, bs_mm = self._forward_one(batch["mm_batch"])
             total_loss = loss_mm * bs_mm if total_loss is None else total_loss + loss_mm * bs_mm
             total_bs += bs_mm
-            self.log("train/loss_mm", loss_mm, prog_bar=False, on_step=True, on_epoch=True, batch_size=bs_mm, sync_dist=False)
+            self.log("train/loss_mm", loss_mm, prog_bar=False, on_step=True, batch_size=bs_mm, sync_dist=True)
 
         if total_bs == 0:
             raise RuntimeError("Both text_batch and mm_batch are empty.")
 
         loss = total_loss / total_bs
-        self.log("train/loss", loss, prog_bar=True, on_step=True, on_epoch=True, batch_size=total_bs, sync_dist=False)
+        self.log("train/loss", loss, prog_bar=True, on_step=True, batch_size=total_bs, sync_dist=True)
         return loss
 
     def configure_optimizers(self):
