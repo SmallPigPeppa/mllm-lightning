@@ -24,7 +24,7 @@ def main():
                 "split": "train",
                 "weight": 1.0,
                 "streaming": False,
-                "shuffle_buffer_size": 10000,
+                "shuffle_buffer_size": 100000,
             }
         ],
         batch_size=1,
