@@ -1,6 +1,6 @@
 from huggingface_hub import snapshot_download
 
-WORKERS = 8
+WORKERS = 16
 
 if __name__ == "__main__":
     snapshot_download(
