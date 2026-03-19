@@ -14,7 +14,6 @@ class MultiModalDataModule(L.LightningDataModule):
         batch_size: int = 1,
         num_workers: int = 2,
         max_length: int = 1024,
-        streaming: bool = False,
         shuffle_buffer_size: int = 10000,
         seed: int = 42,
         stopping_strategy: str = "all_exhausted",
