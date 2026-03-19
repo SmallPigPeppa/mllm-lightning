@@ -1,1 +1,1 @@
-python train.py 2>&1 | tee -a train.log
+python train.py 2>&1 | tee train.log
