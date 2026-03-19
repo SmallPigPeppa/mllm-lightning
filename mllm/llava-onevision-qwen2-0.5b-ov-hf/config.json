@@ -178,7 +178,7 @@
   "use_image_newline_parameter": true,
   "video_token_index": 151647,
   "vision_aspect_ratio": "anyres_max_1",
-  "_comment": "todo: 修改 vision_aspect_ratio：从 anyres_max_9 改为 anyres_max_1",
+  "_comment": "修改 vision_aspect_ratio：从 anyres_max_9 改为 anyres_max_1",
   "vision_config": {
     "hidden_size": 1152,
     "image_size": 384,
