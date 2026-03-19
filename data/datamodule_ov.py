@@ -40,7 +40,7 @@ class MultiModalDataModule(L.LightningDataModule):
 
         datasets, weights = [], []
         for cfg in self.hparams.train_datasets:
-            is_streaming = cfg.get("streaming", self.hparams.streaming)
+            is_streaming = cfg.get("streaming", False)
             ds = load_dataset(
                 cfg["path"],
                 split=cfg.get("split", "train"),
