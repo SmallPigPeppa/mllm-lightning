@@ -1,16 +1,17 @@
 import torch
 import lightning as L
-from transformers import AutoProcessor, LlavaOnevisionForConditionalGeneration
+from transformers import LlavaOnevisionForConditionalGeneration
+
 
 class LlavaSFTModule(L.LightningModule):
     def __init__(
-            self,
-            model_name_or_path: str,
-            lr: float = 1e-5,
-            weight_decay: float = 0.01,
-            trust_remote_code: bool = True,
-            use_gradient_checkpointing: bool = True,
-            torch_dtype: torch.dtype = torch.bfloat16,
+        self,
+        model_name_or_path: str,
+        lr: float = 1e-5,
+        weight_decay: float = 0.01,
+        trust_remote_code: bool = True,
+        use_gradient_checkpointing: bool = True,
+        torch_dtype: torch.dtype = torch.bfloat16,
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["torch_dtype"])
@@ -26,15 +27,56 @@ class LlavaSFTModule(L.LightningModule):
         if use_gradient_checkpointing:
             self.model.gradient_checkpointing_enable()
 
+    def _forward_one(self, packed_batch):
+        model_inputs = {k: v for k, v in packed_batch.items() if k != "sample_ids"}
+        loss = self.model(**model_inputs).loss
+        bs = packed_batch["input_ids"].size(0)
+        return loss, bs
+
     def training_step(self, batch, batch_idx):
-        loss = self.model(**{k: v for k, v in batch.items() if k != "sample_ids"}).loss
+        total_loss = None
+        total_bs = 0
+
+        if batch["text_batch"] is not None:
+            loss_text, bs_text = self._forward_one(batch["text_batch"])
+            total_loss = loss_text * bs_text if total_loss is None else total_loss + loss_text * bs_text
+            total_bs += bs_text
+            self.log(
+                "train/loss_text",
+                loss_text,
+                prog_bar=False,
+                on_step=True,
+                on_epoch=True,
+                batch_size=bs_text,
+                sync_dist=False,
+            )
+
+        if batch["mm_batch"] is not None:
+            loss_mm, bs_mm = self._forward_one(batch["mm_batch"])
+            total_loss = loss_mm * bs_mm if total_loss is None else total_loss + loss_mm * bs_mm
+            total_bs += bs_mm
+            self.log(
+                "train/loss_mm",
+                loss_mm,
+                prog_bar=False,
+                on_step=True,
+                on_epoch=True,
+                batch_size=bs_mm,
+                sync_dist=False,
+            )
+
+        if total_bs == 0:
+            raise RuntimeError("Both text_batch and mm_batch are empty.")
+
+        loss = total_loss / total_bs
+
         self.log(
             "train/loss",
             loss,
             prog_bar=True,
             on_step=True,
             on_epoch=True,
-            batch_size=batch["input_ids"].size(0),
+            batch_size=total_bs,
             sync_dist=False,
         )
         return loss
@@ -45,8 +87,10 @@ class LlavaSFTModule(L.LightningModule):
         for name, param in self.named_parameters():
             if not param.requires_grad:
                 continue
-            (no_decay_params if param.ndim < 2 or "bias" in name or "norm" in name.lower() else decay_params).append(
-                param)
+            if param.ndim < 2 or "bias" in name or "norm" in name.lower():
+                no_decay_params.append(param)
+            else:
+                decay_params.append(param)
 
         return torch.optim.AdamW(
             [
@@ -56,5 +100,3 @@ class LlavaSFTModule(L.LightningModule):
             lr=self.hparams.lr,
             betas=(0.9, 0.95),
         )
-
-

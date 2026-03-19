@@ -3,7 +3,7 @@ import torch
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.strategies import DeepSpeedStrategy,DDPStrategy
+from lightning.pytorch.strategies import DDPStrategy
 
 from data.datamodule_ov import MultiModalDataModule
 from learner.llava_ov import LlavaSFTModule
@@ -11,6 +11,8 @@ from learner.llava_ov import LlavaSFTModule
 
 def main():
     L.seed_everything(42, workers=True)
+    torch.set_float32_matmul_precision("high")
+
     model_name = "/ppio_net0/code/mllm-lightning/mllm/llava-onevision-qwen2-0.5b-ov-hf"
     output_dir = "./outputs/llava_onevision_05b_zero3_sft_1epoch"
 
@@ -22,11 +24,14 @@ def main():
                 "split": "train",
                 "weight": 1.0,
                 "streaming": False,
+                "shuffle_buffer_size": 10000,
             }
         ],
         batch_size=1,
         num_workers=2,
         max_length=2048,
+        debug_print_samples=True,
+        debug_max_chars=400,
     )
 
     model_dtype = torch.bfloat16
@@ -52,17 +57,17 @@ def main():
 
     trainer = L.Trainer(
         accelerator="gpu",
-        strategy="auto",
         devices="auto",
-        max_steps=100,
+        strategy=DDPStrategy(find_unused_parameters=True),
+        max_steps=500,
         precision="bf16-mixed",
-        accumulate_grad_batches=4,
+        accumulate_grad_batches=1,
         gradient_clip_val=1.0,
         log_every_n_steps=1,
         num_sanity_val_steps=0,
         callbacks=[ckpt_callback],
         logger=WandbLogger(
-            name=f"llava_onevision_05b_zero3_sft",
+            name="llava_onevision_05b_zero3_sft",
             project="mllm-lightning",
             log_model=False,
         ),
