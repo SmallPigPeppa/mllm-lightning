@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader
 from datasets import load_dataset, interleave_datasets
 from transformers import AutoProcessor
 from typing import List
+import re
 
 
 class MultiModalDataModule(L.LightningDataModule):
