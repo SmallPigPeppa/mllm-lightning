@@ -52,7 +52,7 @@ def main():
 
     trainer = L.Trainer(
         accelerator="gpu",
-        strategy="auto",
+        strategy=DDPStrategy(find_unused_parameters=True),
         devices="auto",
         max_steps=100,
         precision="bf16-mixed",
