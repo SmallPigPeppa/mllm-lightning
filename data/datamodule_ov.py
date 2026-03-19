@@ -24,67 +24,159 @@ class LazyValidSampleDataset(IterableDataset):
         self.debug_print_samples = debug_print_samples
         self.debug_max_chars = debug_max_chars
 
-
     def _prepare_sample(self, sample) -> Optional[dict]:
-        convs = sample.get("conversations") or []
-        if not convs:
-            return None
+        log_info = None
 
-        has_image = sample.get("image") is not None
-        messages = []
-        first_user = True
-        has_assistant = False
-        assistant_texts = []
+        try:
+            convs = sample.get("conversations") or []
+            if not convs:
+                log_info = {
+                    "tag": "skip_error",
+                    "sample_id": sample.get("id"),
+                    "reason": "empty_conversations",
+                }
+                return None
 
-        for turn in convs:
-            src = turn.get("from")
-            text = re.sub(r"<image>\s*", "", (turn.get("value") or "").strip()).strip()
+            has_image = sample.get("image") is not None
+            messages = []
+            first_user = True
+            assistant_preview = ""
+            has_assistant = False
 
-            if src in {"human", "user"}:
-                content = []
-                if first_user and has_image:
-                    content.append({"type": "image"})
-                first_user = False
-                content.append({"type": "text", "text": text or ""})
-                messages.append({"role": "user", "content": content})
+            for turn in convs:
+                src = turn.get("from")
+                text = re.sub(r"<image>\s*", "", (turn.get("value") or "").strip()).strip()
 
-            elif src in {"gpt", "assistant"} and text:
-                has_assistant = True
-                assistant_texts.append(text)
-                messages.append({
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": text}],
-                })
+                if src in {"human", "user"}:
+                    content = ([{"type": "image"}] if first_user and has_image else [])
+                    first_user = False
+                    content.append({"type": "text", "text": text})
+                    messages.append({"role": "user", "content": content})
 
-        if not messages or not has_assistant:
-            return None
+                elif src in {"gpt", "assistant"} and text:
+                    has_assistant = True
+                    assistant_preview = text[: self.debug_max_chars]
+                    messages.append({
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": text}],
+                    })
 
-        rendered_text = self.processor.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=False,
-        )
+            if not messages:
+                log_info = {
+                    "tag": "skip_error",
+                    "sample_id": sample.get("id"),
+                    "reason": "empty_messages",
+                }
+                return None
 
-        image = sample["image"].convert("RGB") if has_image else None
-        item = {
-            "sample_id": sample.get("id"),
-            "has_image": has_image,
-            "image": image,
-            "text": rendered_text,
-            "debug_info": {
+            if not has_assistant:
+                log_info = {
+                    "tag": "skip_error",
+                    "sample_id": sample.get("id"),
+                    "reason": "no_assistant_reply",
+                }
+                return None
+
+            rendered_text = self.processor.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+
+            image = sample["image"].convert("RGB") if has_image else None
+            item = {
                 "sample_id": sample.get("id"),
                 "has_image": has_image,
-                "image_size": list(image.size) if image is not None else None,
-                "num_turns": len(convs),
-                "text_preview": rendered_text[: self.debug_max_chars],
-                "assistant_preview": (assistant_texts[-1][: self.debug_max_chars] if assistant_texts else ""),
-            },
-        }
+                "image": image,
+                "text": rendered_text,
+                "debug_info": {
+                    "sample_id": sample.get("id"),
+                    "has_image": has_image,
+                    "image_size": list(image.size) if image is not None else None,
+                    "num_turns": len(convs),
+                    "text_preview": rendered_text[: self.debug_max_chars],
+                    "assistant_preview": assistant_preview,
+                },
+            }
 
-        if self.debug_print_samples:
-            print(f"[sample pid={os.getpid()}] {json.dumps(item['debug_info'], ensure_ascii=False)}", flush=True)
+            if not has_image:
+                log_info = {"tag": "text_only", **item["debug_info"]}
 
-        return item
+            return item
+
+        except Exception as e:
+            log_info = {
+                "tag": "skip_error",
+                "sample_id": sample.get("id"),
+                "reason": type(e).__name__,
+                "error": str(e)[: self.debug_max_chars],
+            }
+            return None
+
+        finally:
+            if self.debug_print_samples and log_info is not None:
+                print(json.dumps(log_info, ensure_ascii=False), flush=True)
+
+    # def _prepare_sample(self, sample) -> Optional[dict]:
+    #     convs = sample.get("conversations") or []
+    #     if not convs:
+    #         return None
+    #
+    #     has_image = sample.get("image") is not None
+    #     messages = []
+    #     first_user = True
+    #     has_assistant = False
+    #     assistant_texts = []
+    #
+    #     for turn in convs:
+    #         src = turn.get("from")
+    #         text = re.sub(r"<image>\s*", "", (turn.get("value") or "").strip()).strip()
+    #
+    #         if src in {"human", "user"}:
+    #             content = []
+    #             if first_user and has_image:
+    #                 content.append({"type": "image"})
+    #             first_user = False
+    #             content.append({"type": "text", "text": text or ""})
+    #             messages.append({"role": "user", "content": content})
+    #
+    #         elif src in {"gpt", "assistant"} and text:
+    #             has_assistant = True
+    #             assistant_texts.append(text)
+    #             messages.append({
+    #                 "role": "assistant",
+    #                 "content": [{"type": "text", "text": text}],
+    #             })
+    #
+    #     if not messages or not has_assistant:
+    #         return None
+    #
+    #     rendered_text = self.processor.apply_chat_template(
+    #         messages,
+    #         tokenize=False,
+    #         add_generation_prompt=False,
+    #     )
+    #
+    #     image = sample["image"].convert("RGB") if has_image else None
+    #     item = {
+    #         "sample_id": sample.get("id"),
+    #         "has_image": has_image,
+    #         "image": image,
+    #         "text": rendered_text,
+    #         "debug_info": {
+    #             "sample_id": sample.get("id"),
+    #             "has_image": has_image,
+    #             "image_size": list(image.size) if image is not None else None,
+    #             "num_turns": len(convs),
+    #             "text_preview": rendered_text[: self.debug_max_chars],
+    #             "assistant_preview": (assistant_texts[-1][: self.debug_max_chars] if assistant_texts else ""),
+    #         },
+    #     }
+    #
+    #     if self.debug_print_samples:
+    #         print(f"[sample pid={os.getpid()}] {json.dumps(item['debug_info'], ensure_ascii=False)}", flush=True)
+    #
+    #     return item
 
     def __iter__(self):
         ds = self.base_dataset
@@ -106,7 +198,6 @@ class MultiModalDataModule(L.LightningDataModule):
         batch_size: int = 1,
         num_workers: int = 2,
         max_length: int = 1024,
-        shuffle_buffer_size: int = 10000,
         seed: int = 42,
         stopping_strategy: str = "all_exhausted",
         trust_remote_code: bool = True,
@@ -162,7 +253,7 @@ class MultiModalDataModule(L.LightningDataModule):
 
             ds = ds.shuffle(
                 seed=self.hparams.seed,
-                buffer_size=cfg.get("shuffle_buffer_size", self.hparams.shuffle_buffer_size),
+                buffer_size=cfg.get("shuffle_buffer_size", 10000),
             )
 
             if world_size > 1:
