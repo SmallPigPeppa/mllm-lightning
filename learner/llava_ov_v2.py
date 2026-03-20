@@ -53,6 +53,8 @@ class LlavaSFTModule(L.LightningModule):
 
 
     def training_step(self, batch, batch_idx):
+        outputs = self.model(**batch)
+        import pdb; pdb.set_trace()
         loss = self.model(**{k: v for k, v in batch.items() if k != "sample_ids"}).loss
         self.log(
             "train/loss",
