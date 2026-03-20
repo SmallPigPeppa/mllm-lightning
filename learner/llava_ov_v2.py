@@ -2,8 +2,6 @@ import torch
 import lightning as L
 from mllm.llava_onevision_qwen2_0_5b_ov_hf.custom_models.modeling_llava_onevision import LlavaOnevisionForConditionalGeneration
 from transformers.models.llava_onevision.configuration_llava_onevision import LlavaOnevisionConfig
-from transformers.models.llava_onevision.configuration_llava_onevision import LlavaOnevisionConfig
-from transformers.models.auto import AutoConfig
 from peft import LoraConfig, TaskType, get_peft_model
 
 class LlavaSFTModule(L.LightningModule):
@@ -17,11 +15,7 @@ class LlavaSFTModule(L.LightningModule):
         super().__init__()
         self.save_hyperparameters(ignore=["torch_dtype"])
         self.optim_args = optim_args
-        # model_config = LlavaOnevisionConfig.from_pretrained(
-        #     model_name_or_path,
-        #     local_files_only=True,
-        # )
-        model_config = AutoConfig.from_pretrained(
+        model_config = LlavaOnevisionConfig.from_pretrained(
             model_name_or_path,
             local_files_only=True,
         )
