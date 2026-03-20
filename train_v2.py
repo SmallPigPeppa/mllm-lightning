@@ -65,7 +65,7 @@ def main():
         accelerator="gpu",
         strategy=DDPStrategy(find_unused_parameters=True),
         devices="auto",
-        max_steps=100,
+        max_steps=2000,
         precision="bf16-mixed",
         accumulate_grad_batches=4,
         gradient_clip_val=1.0,
