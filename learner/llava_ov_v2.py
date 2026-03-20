@@ -20,15 +20,10 @@ class LlavaSFTModule(L.LightningModule):
             model_name_or_path,
             local_files_only=True,
         )
-        print("arg model_name_or_path =", model_name_or_path)
-        print("config._name_or_path =", model_config._name_or_path)
+        print("model_name_or_path =", model_name_or_path)
+        print("_name_or_path =", model_config._name_or_path)
 
-        print(type(model_config.text_config))
-        print(model_config.text_config)
-        print("hidden_size =", model_config.text_config.hidden_size)
-        print("intermediate_size =", model_config.text_config.intermediate_size)
-        print("num_hidden_layers =", model_config.text_config.num_hidden_layers)
-        print("vocab_size =", model_config.text_config.vocab_size)
+
         self.model = LlavaOnevisionForConditionalGeneration.from_pretrained(
             model_name_or_path,
             config=model_config,
