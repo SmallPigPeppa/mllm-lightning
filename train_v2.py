@@ -5,8 +5,8 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.strategies import DeepSpeedStrategy,DDPStrategy
 
-from data.datamodule_ov import MultiModalDataModule
-from learner.llava_ov import LlavaSFTModule
+from data.datamodule_ov_v4 import MultiModalDataModule
+from learner.llava_ov_v2 import LlavaSFTModule
 
 
 def main():
@@ -29,15 +29,11 @@ def main():
         max_length=2048,
     )
 
-    model_dtype = torch.bfloat16
-
     lit_model = LlavaSFTModule(
         model_name_or_path=model_name,
         lr=1e-5,
         weight_decay=0.01,
-        trust_remote_code=True,
-        use_gradient_checkpointing=True,
-        torch_dtype=model_dtype,
+        torch_dtype=torch.bfloat16,
     )
 
     ckpt_callback = ModelCheckpoint(
