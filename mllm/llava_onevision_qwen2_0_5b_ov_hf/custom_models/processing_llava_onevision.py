@@ -134,7 +134,6 @@ class LlavaOnevisionProcessor(ProcessorMixin):
             text, num_image_tokens = self._expand_image_tokens(
                 text, image_sizes, height, width, self.image_token, batch_num_images
             )
-            import pdb;pdb.set_trace()
 
         if videos is not None:
             video_inputs = self.video_processor(videos, **output_kwargs["videos_kwargs"])
