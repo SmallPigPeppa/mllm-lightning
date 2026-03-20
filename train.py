@@ -87,6 +87,18 @@ def main():
 
     trainer.fit(lit_model, datamodule=dm)
 
+    hf_save_dir = os.path.join(output_dir, "hf_model")
+    os.makedirs(hf_save_dir, exist_ok=True)
+    trainer.strategy.barrier()
+    if trainer.is_global_zero:
+        lit_model.model.save_pretrained(hf_save_dir)
+        dm.processor.save_pretrained(hf_save_dir)
+    trainer.strategy.barrier()
+
+    print(f"HF weights saved to: {hf_save_dir}")
+    print(f"Lightning checkpoint saved to: {ckpt_callback.last_model_path}")
+
+
 
 if __name__ == "__main__":
     main()
