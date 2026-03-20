@@ -25,7 +25,7 @@ def main():
             }
         ],
         batch_size=1,
-        num_workers=2,
+        num_workers=0,
         max_length=2048,
     )
 
