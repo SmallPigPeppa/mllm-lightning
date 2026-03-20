@@ -31,9 +31,24 @@ def main():
 
     lit_model = LlavaSFTModule(
         model_name_or_path=model_name,
-        lr=1e-5,
-        weight_decay=0.01,
         torch_dtype=torch.bfloat16,
+        optim_args={
+            "lr": 2e-5,
+            "weight_decay": 0.05,
+            "betas": (0.9, 0.999),
+        },
+        lora_args = {
+            "enabled": True,
+            "r": 128,
+            "alpha": 256,
+            "dropout": 0.05,
+            "target_modules": [
+                "q_proj", "k_proj", "v_proj", "o_proj",
+                "gate_proj", "up_proj", "down_proj",
+            ],
+            "bias": "none",
+        }
+
     )
 
     ckpt_callback = ModelCheckpoint(
