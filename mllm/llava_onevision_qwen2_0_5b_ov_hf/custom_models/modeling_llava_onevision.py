@@ -566,6 +566,7 @@ class LlavaOnevisionModel(LlavaOnevisionPreTrainedModel):
             cache_position=cache_position,
             **kwargs,
         )
+        import pdb;pdb.set_trace()
 
         return LlavaOnevisionModelOutputWithPast(
             last_hidden_state=outputs.last_hidden_state,
