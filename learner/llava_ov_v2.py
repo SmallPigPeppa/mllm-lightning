@@ -1,7 +1,7 @@
 import torch
 import lightning as L
 from mllm.llava_onevision_qwen2_0_5b_ov_hf.custom_models.modeling_llava_onevision import LlavaOnevisionForConditionalGeneration
-from transformers.models.llava_onevision.configuration_llava_onevision import LlavaOnevisionConfig
+from mllm.llava_onevision_qwen2_0_5b_ov_hf.custom_models.configuration_llava_onevision import LlavaOnevisionConfig
 from peft import LoraConfig, TaskType, get_peft_model
 
 class LlavaSFTModule(L.LightningModule):
