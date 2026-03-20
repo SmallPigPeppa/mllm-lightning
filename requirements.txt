@@ -6,6 +6,7 @@ deepspeed
 transformers
 datasets
 huggingface
+peft
 git+https://github.com/SmallPigPeppa/pytorch-lightning.git@npu_support_fp16_mixed
 
 
