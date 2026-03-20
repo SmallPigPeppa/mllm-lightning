@@ -19,6 +19,7 @@ class LlavaSFTModule(L.LightningModule):
             model_name_or_path,
             local_files_only=True,
         )
+        import pdb; pdb.set_trace()
 
         print(type(model_config.text_config))
         print(model_config.text_config)
