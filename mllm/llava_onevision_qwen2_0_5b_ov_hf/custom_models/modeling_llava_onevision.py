@@ -505,7 +505,7 @@ class LlavaOnevisionModel(LlavaOnevisionPreTrainedModel):
         """
 
 
-        import pdb;pdb.set_trace()
+
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -534,6 +534,7 @@ class LlavaOnevisionModel(LlavaOnevisionPreTrainedModel):
                 input_ids, inputs_embeds=inputs_embeds, image_features=image_features
             )
             inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
+            import pdb;pdb.set_trace()
 
         # Video are simply embedded and further pooled to decrease seq len
         if pixel_values_videos is not None:
