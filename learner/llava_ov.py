@@ -26,7 +26,6 @@ class LlavaSFTModule(L.LightningModule):
         )
         self.model.config.use_cache = False
 
-
         if lora_args and lora_args.get("enabled", False):
             target_modules = lora_args.get("target_modules") or [
                 "q_proj", "k_proj", "v_proj", "o_proj",
@@ -55,6 +54,8 @@ class LlavaSFTModule(L.LightningModule):
     def training_step(self, batch, batch_idx):
         total_loss = None
         total_bs = 0
+        bs_text = 0
+        bs_mm = 0
 
         if batch["text_batch"] is not None:
             loss_text, bs_text = self._forward_one(batch["text_batch"])
@@ -73,6 +74,8 @@ class LlavaSFTModule(L.LightningModule):
 
         loss = total_loss / total_bs
         self.log("train/loss", loss, prog_bar=True, on_step=True, batch_size=total_bs, sync_dist=True)
+        self.log("train/bs_text", bs_text, prog_bar=True, on_step=True, sync_dist=True)
+        self.log("train/bs_mm", bs_mm, prog_bar=True, on_step=True, sync_dist=True)
         return loss
 
     def configure_optimizers(self):
