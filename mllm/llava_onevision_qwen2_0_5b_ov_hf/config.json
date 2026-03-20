@@ -1,5 +1,4 @@
 {
-  "_name_or_path": "/raid/raushan/ov-500",
   "architectures": [
     "LlavaOnevisionForConditionalGeneration"
   ],
