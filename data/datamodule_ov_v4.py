@@ -139,18 +139,19 @@ class MultiModalDataModule(L.LightningDataModule):
             return_tensors="pt",
         )
 
-        # labels = model_inputs["input_ids"].clone()
-        # labels.masked_fill_(model_inputs["attention_mask"] == 0, self.hparams.ignore_index)
-        #
-        # image_token_id = getattr(self.processor, "image_token_id", None)
-        # if image_token_id is not None:
-        #     labels.masked_fill_(model_inputs["input_ids"] == image_token_id, self.hparams.ignore_index)
-        #
-        # video_token_id = getattr(self.processor, "video_token_id", None)
-        # if video_token_id is not None:
-        #     labels.masked_fill_(model_inputs["input_ids"] == video_token_id, self.hparams.ignore_index)
-        #
-        # model_inputs["labels"] = labels
+        labels = model_inputs["input_ids"].clone()
+        labels.masked_fill_(model_inputs["attention_mask"] == 0, self.hparams.ignore_index)
+
+        image_token_id = getattr(self.processor, "image_token_id", None)
+        import pdb; pdb.set_trace()
+        if image_token_id is not None:
+            labels.masked_fill_(model_inputs["input_ids"] == image_token_id, self.hparams.ignore_index)
+
+        video_token_id = getattr(self.processor, "video_token_id", None)
+        if video_token_id is not None:
+            labels.masked_fill_(model_inputs["input_ids"] == video_token_id, self.hparams.ignore_index)
+
+        model_inputs["labels"] = labels
         model_inputs["sample_ids"] = sample_ids
         return model_inputs
 
