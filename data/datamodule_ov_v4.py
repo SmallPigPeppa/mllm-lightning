@@ -10,17 +10,17 @@ from transformers import AutoProcessor
 
 class MultiModalDataModule(L.LightningDataModule):
     def __init__(
-        self,
-        model_name_or_path: str,
-        train_datasets: List[dict],
-        batch_size: int = 1,
-        num_workers: int = 2,
-        max_length: int = 1024,
-        seed: int = 42,
-        stopping_strategy: str = "all_exhausted",
-        trust_remote_code: bool = True,
-        cache_dir: str = "/ppio_net0/huggingface",
-        ignore_index: int = -100,
+            self,
+            model_name_or_path: str,
+            train_datasets: List[dict],
+            batch_size: int = 1,
+            num_workers: int = 2,
+            max_length: int = 1024,
+            seed: int = 42,
+            stopping_strategy: str = "all_exhausted",
+            trust_remote_code: bool = True,
+            cache_dir: str = "/ppio_net0/huggingface",
+            ignore_index: int = -100,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -74,55 +74,35 @@ class MultiModalDataModule(L.LightningDataModule):
     def collate_fn(self, batch):
         texts, images, sample_ids = [], [], []
 
-        image_token = re.escape(getattr(self.processor, "image_token", "<image>"))
-        video_token = re.escape(getattr(self.processor, "video_token", "<video>"))
+        image_token = getattr(self.processor, "image_token", "<image>")
+        video_token = getattr(self.processor, "video_token", "<video>")
 
         for sample in batch:
             conversations = sample.get("conversations") or []
             if not conversations:
                 continue
 
-            has_image = sample.get("image") is not None
             messages = []
-            first_user = True
+            used_image = False
             has_assistant = False
 
             for turn in conversations:
-                src = turn.get("from")
-                if src not in {"human", "user", "gpt", "assistant"}:
+                role = {"human": "user", "user": "user", "gpt": "assistant", "assistant": "assistant", }.get(
+                    turn.get("from"))
+                if role is None:
                     continue
 
-                text = (turn.get("value") or "").strip()
-                text = re.sub(rf"{image_token}\s*", "", text)
-                text = re.sub(rf"{video_token}\s*", "", text)
-                text = text.strip()
+                text = (turn.get("value") or "").replace(image_token, "").replace(video_token, "").strip()
+                if not text:
+                    continue
 
-                if src in {"human", "user"}:
-                    if not text:
-                        continue
-
-                    if first_user and has_image:
-                        messages.append(
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "image"},
-                                    {"type": "text", "text": text},
-                                ],
-                            }
-                        )
-                    else:
-                        messages.append(
-                            {
-                                "role": "user",
-                                "content": [{"type": "text", "text": text}],
-                            }
-                        )
-                    first_user = False
-
+                if role == "user":
+                    content = [{"type": "text", "text": text}]
+                    if sample.get("image") is not None and not used_image:
+                        content.insert(0, {"type": "image"})
+                        used_image = True
+                    messages.append({"role": "user", "content": content})
                 else:
-                    if not text:
-                        continue
                     has_assistant = True
                     messages.append(
                         {
@@ -143,7 +123,7 @@ class MultiModalDataModule(L.LightningDataModule):
             )
             sample_ids.append(sample.get("id"))
 
-            if has_image:
+            if used_image:
                 images.append(sample["image"].convert("RGB"))
 
         if not texts:
@@ -151,7 +131,7 @@ class MultiModalDataModule(L.LightningDataModule):
 
         model_inputs = self.processor(
             text=texts,
-            images=images if images else None,
+            images=images or None,
             padding=True,
             truncation=True,
             max_length=self.hparams.max_length,

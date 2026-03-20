@@ -20,14 +20,14 @@ from collections.abc import Iterable
 
 import numpy as np
 
-from transformers.models.llava_onevision.processing_llava_onevision import BatchFeature
-from transformers.models.llava_onevision.processing_llava_onevision import select_best_resolution
-from transformers.models.llava_onevision.processing_llava_onevision import ImageInput, get_image_size, to_numpy_array
-from transformers.models.llava_onevision.processing_llava_onevision import MultiModalData, ProcessingKwargs, \
-    ProcessorMixin, Unpack
-from transformers.models.llava_onevision.processing_llava_onevision import PreTokenizedInput, TextInput
-from transformers.models.llava_onevision.processing_llava_onevision import auto_docstring, logging
-from transformers.models.llava_onevision.processing_llava_onevision import VideoInput
+from transformers.feature_extraction_utils import BatchFeature
+from transformers.image_processing_utils import select_best_resolution
+from transformers.image_utils import ImageInput, get_image_size, to_numpy_array
+from transformers.processing_utils import MultiModalData, ProcessingKwargs, ProcessorMixin, Unpack
+from transformers.tokenization_utils_base import PreTokenizedInput, TextInput
+from transformers.utils import auto_docstring, logging
+from transformers.video_utils import VideoInput
+
 
 logger = logging.get_logger(__name__)
 
@@ -46,17 +46,17 @@ class LlavaOnevisionProcessorKwargs(ProcessingKwargs, total=False):
 @auto_docstring
 class LlavaOnevisionProcessor(ProcessorMixin):
     def __init__(
-            self,
-            image_processor=None,
-            tokenizer=None,
-            video_processor=None,
-            num_image_tokens=None,
-            vision_feature_select_strategy=None,
-            chat_template=None,
-            image_token="<image>",
-            video_token="<video>",
-            vision_aspect_ratio="anyres_max_9",
-            **kwargs,
+        self,
+        image_processor=None,
+        tokenizer=None,
+        video_processor=None,
+        num_image_tokens=None,
+        vision_feature_select_strategy=None,
+        chat_template=None,
+        image_token="<image>",
+        video_token="<video>",
+        vision_aspect_ratio="anyres_max_9",
+        **kwargs,
     ):
         r"""
         num_image_tokens (`int`, *optional*):
@@ -90,11 +90,11 @@ class LlavaOnevisionProcessor(ProcessorMixin):
 
     @auto_docstring
     def __call__(
-            self,
-            images: ImageInput | None = None,
-            text: TextInput | PreTokenizedInput | list[TextInput] | list[PreTokenizedInput] = None,
-            videos: VideoInput | None = None,
-            **kwargs: Unpack[LlavaOnevisionProcessorKwargs],
+        self,
+        images: ImageInput | None = None,
+        text: TextInput | PreTokenizedInput | list[TextInput] | list[PreTokenizedInput] = None,
+        videos: VideoInput | None = None,
+        **kwargs: Unpack[LlavaOnevisionProcessorKwargs],
     ) -> BatchFeature:
         r"""
         Returns:
@@ -164,13 +164,13 @@ class LlavaOnevisionProcessor(ProcessorMixin):
         return BatchFeature(data={**text_inputs, **image_inputs, **video_inputs}, tensor_type=return_tensors)
 
     def _expand_image_tokens(
-            self,
-            text: list[TextInput],
-            image_sizes: Iterable[list[int] | int],
-            height: int,
-            width: int,
-            special_token: str,
-            batch_num_images: Iterable[int],
+        self,
+        text: list[TextInput],
+        image_sizes: Iterable[list[int] | int],
+        height: int,
+        width: int,
+        special_token: str,
+        batch_num_images: Iterable[int],
     ):
         prompt_strings = []
         max_num_vision_tokens = 0
@@ -241,7 +241,7 @@ class LlavaOnevisionProcessor(ProcessorMixin):
         newline_features = current_height
 
         max_num_patches = int(self.vision_aspect_ratio.strip("anyres_max_"))
-        ratio = math.sqrt(current_height * current_width / (max_num_patches * patches_height ** 2))
+        ratio = math.sqrt(current_height * current_width / (max_num_patches * patches_height**2))
         if ratio > 1.1:
             unpadded_features = int(current_height // ratio) * int(current_width // ratio)
             newline_features = int(current_height // ratio)
