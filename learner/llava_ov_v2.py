@@ -20,8 +20,6 @@ class LlavaSFTModule(L.LightningModule):
             model_name_or_path,
             local_files_only=True,
         )
-        print("model_name_or_path =", model_name_or_path)
-        print("_name_or_path =", model_config._name_or_path)
 
 
         self.model = LlavaOnevisionForConditionalGeneration.from_pretrained(
