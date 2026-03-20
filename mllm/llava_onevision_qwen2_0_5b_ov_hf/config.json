@@ -1,5 +1,5 @@
 {
-  "_name_or_path": "/ppio_net0/code/mllm-lightning/mllm/llava-onevision-qwen2-0.5b-ov-hf",
+  "_name_or_path": "/raid/raushan/ov-500",
   "architectures": [
     "LlavaOnevisionForConditionalGeneration"
   ],
