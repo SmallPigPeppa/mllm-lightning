@@ -504,6 +504,8 @@ class LlavaOnevisionModel(LlavaOnevisionPreTrainedModel):
             Number of images in each sample.
         """
 
+
+        import pdb;pdb.set_trace()
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
