@@ -28,7 +28,6 @@ class LlavaSFTModule(L.LightningModule):
 
 
         if lora_args and lora_args.get("enabled", False):
-
             target_modules = lora_args.get("target_modules") or [
                 "q_proj", "k_proj", "v_proj", "o_proj",
                 "gate_proj", "up_proj", "down_proj",
