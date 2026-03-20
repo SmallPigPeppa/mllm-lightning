@@ -4,6 +4,5 @@
   "processor_class": "LlavaOnevisionProcessor",
   "video_token": "<video>",
   "vision_feature_select_strategy": "full",
-  "vision_aspect_ratio": "anyres_max_1",
-  "_comment": "todo: 修改 vision_aspect_ratio：从 anyres_max_9 改为 anyres_max_1"
+  "vision_aspect_ratio": "anyres_max_9"
 }
