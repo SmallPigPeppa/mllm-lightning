@@ -20,6 +20,8 @@ class LlavaSFTModule(L.LightningModule):
             model_name_or_path,
             local_files_only=True,
         )
+        print("arg model_name_or_path =", model_name_or_path)
+        print("config._name_or_path =", model_config._name_or_path)
 
         print(type(model_config.text_config))
         print(model_config.text_config)
