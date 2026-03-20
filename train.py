@@ -44,7 +44,7 @@ def main():
             "gate_proj", "up_proj", "down_proj",
         ],
         # "modules_to_save": ["multi_modal_projector"],
-        "bias": None,
+        "bias": "none",
     }
 
     lit_model = LlavaSFTModule(

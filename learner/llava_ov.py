@@ -39,7 +39,7 @@ class LlavaSFTModule(L.LightningModule):
                 r=lora_args.get("r", 64),
                 lora_alpha=lora_args.get("alpha", 128),
                 lora_dropout=lora_args.get("dropout", 0.05),
-                bias=lora_args.get("bias", None),
+                bias=lora_args.get("bias", "none"),
                 target_modules=target_modules,
                 modules_to_save=lora_args.get("modules_to_save", None),
             )
