@@ -34,13 +34,26 @@ def main():
         debug_max_chars=400,
     )
 
+    lora_args = {
+        "enabled": True,
+        "r": 64,
+        "alpha": 128,
+        "dropout": 0.05,
+        "target_modules": [
+            "q_proj", "k_proj", "v_proj", "o_proj",
+            "gate_proj", "up_proj", "down_proj",
+        ],
+        # "modules_to_save": ["multi_modal_projector"],
+        "bias": "none",
+    }
+
     lit_model = LlavaSFTModule(
         model_name_or_path=model_name,
         lr=1e-5,
         weight_decay=0.01,
         trust_remote_code=True,
-        use_gradient_checkpointing=True,
         torch_dtype=torch.bfloat16,
+        lora_args=lora_args,
     )
 
     ckpt_callback = ModelCheckpoint(

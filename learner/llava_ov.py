@@ -1,17 +1,19 @@
 import torch
 import lightning as L
 from transformers import LlavaOnevisionForConditionalGeneration
+from peft import LoraConfig, TaskType, get_peft_model
 
 
 class LlavaSFTModule(L.LightningModule):
     def __init__(
-        self,
-        model_name_or_path: str,
-        lr: float = 1e-5,
-        weight_decay: float = 0.01,
-        trust_remote_code: bool = True,
-        use_gradient_checkpointing: bool = True,
-        torch_dtype: torch.dtype = torch.bfloat16,
+            self,
+            *,
+            model_name_or_path: str,
+            lr: float = 1e-5,
+            weight_decay: float = 0.01,
+            trust_remote_code: bool = True,
+            torch_dtype: torch.dtype = torch.bfloat16,
+            lora_args: dict | None = None,
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["torch_dtype"])
@@ -24,8 +26,26 @@ class LlavaSFTModule(L.LightningModule):
         )
         self.model.config.use_cache = False
 
-        if use_gradient_checkpointing:
-            self.model.gradient_checkpointing_enable()
+
+        if lora_args and lora_args.get("enabled", False):
+
+            target_modules = lora_args.get("target_modules") or [
+                "q_proj", "k_proj", "v_proj", "o_proj",
+                "gate_proj", "up_proj", "down_proj",
+            ]
+
+            peft_config = LoraConfig(
+                task_type=TaskType.CAUSAL_LM,
+                inference_mode=False,
+                r=lora_args.get("r", 64),
+                lora_alpha=lora_args.get("alpha", 128),
+                lora_dropout=lora_args.get("dropout", 0.05),
+                bias=lora_args.get("bias", None),
+                target_modules=target_modules,
+                modules_to_save=lora_args.get("modules_to_save", None),
+            )
+            self.model = get_peft_model(self.model, peft_config)
+            self.model.print_trainable_parameters()
 
     def _forward_one(self, packed_batch):
         model_inputs = {k: v for k, v in packed_batch.items() if k != "sample_ids"}
