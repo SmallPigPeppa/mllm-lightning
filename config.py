@@ -4,7 +4,7 @@ from pprint import pprint
 from mllm.llava_onevision_qwen2_0_5b_ov_hf.custom_models.modeling_llava_onevision import LlavaOnevisionForConditionalGeneration
 from mllm.llava_onevision_qwen2_0_5b_ov_hf.custom_models.configuration_llava_onevision import LlavaOnevisionConfig
 
-model_name_or_path = "/ppio_net0/code/mllm_lightning/mllm/llava_onevision_qwen2_0_5b_ov_hf"
+model_name_or_path = "/ppio_net0/code/mllm-lightning/mllm/llava_onevision_qwen2_0_5b_ov_hf"
 
 # 1) 先看磁盘上的原始 config.json
 config_path = os.path.join(model_name_or_path, "config.json")

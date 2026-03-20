@@ -11,7 +11,7 @@ from learner.llava_ov_v2 import LlavaSFTModule
 
 def main():
     L.seed_everything(42, workers=True)
-    model_name = "/ppio_net0/code/mllm_lightning/mllm/llava_onevision_qwen2_0_5b_ov_hf"
+    model_name = "/ppio_net0/code/mllm-lightning/mllm/llava_onevision_qwen2_0_5b_ov_hf"
     output_dir = "./outputs/llava_onevision_05b_zero3_sft_1epoch"
 
     dm = MultiModalDataModule(

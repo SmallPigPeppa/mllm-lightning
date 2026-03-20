@@ -16,7 +16,7 @@ def main():
     L.seed_everything(42, workers=True)
     torch.set_float32_matmul_precision("high")
 
-    model_name = "/ppio_net0/code/mllm-lightning/mllm/llava-onevision-qwen2-0.5b-ov-hf"
+    model_name = "/ppio_net0/code/mllm-lightning/mllm/llava_onevision_qwen2_0_5b_ov_hf/"
     output_dir = "./outputs/llava_onevision_05b_zero3_sft_1epoch"
 
     dm = MultiModalDataModule(
