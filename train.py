@@ -36,15 +36,15 @@ def main():
 
     lora_args = {
         "enabled": True,
-        "r": 64,
-        "alpha": 128,
+        "r": 128,
+        "alpha": 256,
         "dropout": 0.05,
         "target_modules": [
             "q_proj", "k_proj", "v_proj", "o_proj",
             "gate_proj", "up_proj", "down_proj",
         ],
         # "modules_to_save": ["multi_modal_projector"],
-        "bias": "none",
+        "bias": None,
     }
 
     lit_model = LlavaSFTModule(
