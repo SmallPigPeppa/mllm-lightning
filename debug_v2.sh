@@ -1,0 +1,1 @@
+python train_v2.py 2>&1 | tee train.log
