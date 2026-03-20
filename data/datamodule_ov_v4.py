@@ -5,7 +5,8 @@ import lightning as L
 import torch
 from torch.utils.data import DataLoader
 from datasets import load_dataset, interleave_datasets
-from transformers import AutoProcessor
+# from transformers import AutoProcessor
+from mllm.llava_onevision_qwen2_0_5b_ov_hf.custom_models.processing_llava_onevision import LlavaOnevisionProcessor
 
 
 class MultiModalDataModule(L.LightningDataModule):
@@ -29,7 +30,7 @@ class MultiModalDataModule(L.LightningDataModule):
 
     def setup(self, stage=None):
         if self.processor is None:
-            self.processor = AutoProcessor.from_pretrained(
+            self.processor = LlavaOnevisionProcessor.from_pretrained(
                 self.hparams.model_name_or_path,
                 trust_remote_code=self.hparams.trust_remote_code,
                 cache_dir=self.hparams.cache_dir,

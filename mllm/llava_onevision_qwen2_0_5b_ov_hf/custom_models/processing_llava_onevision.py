@@ -131,6 +131,7 @@ class LlavaOnevisionProcessor(ProcessorMixin):
                 to_numpy_array(image_inputs["pixel_values"][0][0]),
                 channel_dim=output_kwargs["images_kwargs"].get("data_format"),
             )
+            import pdb; pdb.set_trace()
             text, num_image_tokens = self._expand_image_tokens(
                 text, image_sizes, height, width, self.image_token, batch_num_images
             )
