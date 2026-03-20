@@ -25,158 +25,65 @@ class LazyValidSampleDataset(IterableDataset):
         self.debug_max_chars = debug_max_chars
 
     def _prepare_sample(self, sample) -> Optional[dict]:
-        log_info = None
-
-        try:
-            convs = sample.get("conversations") or []
-            if not convs:
-                log_info = {
-                    "tag": "skip_error",
-                    "sample_id": sample.get("id"),
-                    "reason": "empty_conversations",
-                }
-                return None
-
-            has_image = sample.get("image") is not None
-            messages = []
-            first_user = True
-            assistant_preview = ""
-            has_assistant = False
-
-            for turn in convs:
-                src = turn.get("from")
-                text = re.sub(r"<image>\s*", "", (turn.get("value") or "").strip()).strip()
-
-                if src in {"human", "user"}:
-                    content = ([{"type": "image"}] if first_user and has_image else [])
-                    first_user = False
-                    content.append({"type": "text", "text": text})
-                    messages.append({"role": "user", "content": content})
-
-                elif src in {"gpt", "assistant"} and text:
-                    has_assistant = True
-                    assistant_preview = text[: self.debug_max_chars]
-                    messages.append({
-                        "role": "assistant",
-                        "content": [{"type": "text", "text": text}],
-                    })
-
-            if not messages:
-                log_info = {
-                    "tag": "skip_error",
-                    "sample_id": sample.get("id"),
-                    "reason": "empty_messages",
-                }
-                return None
-
-            if not has_assistant:
-                log_info = {
-                    "tag": "skip_error",
-                    "sample_id": sample.get("id"),
-                    "reason": "no_assistant_reply",
-                }
-                return None
-
-            rendered_text = self.processor.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=False,
-            )
-
-            image = sample["image"].convert("RGB") if has_image else None
-            item = {
-                "sample_id": sample.get("id"),
-                "has_image": has_image,
-                "image": image,
-                "text": rendered_text,
-                "debug_info": {
-                    "sample_id": sample.get("id"),
-                    "has_image": has_image,
-                    "image_size": list(image.size) if image is not None else None,
-                    "num_turns": len(convs),
-                    "text_preview": rendered_text[: self.debug_max_chars],
-                    "assistant_preview": assistant_preview,
-                },
-            }
-
-            if not has_image:
-                log_info = {"tag": "text_only", **item["debug_info"]}
-
-            return item
-
-        except Exception as e:
-            log_info = {
-                "tag": "skip_error",
-                "sample_id": sample.get("id"),
-                "reason": type(e).__name__,
-                "error": str(e)[: self.debug_max_chars],
-            }
+        convs = sample.get("conversations") or []
+        if not convs:
             return None
 
-        finally:
-            if self.debug_print_samples and log_info is not None:
-                print(json.dumps(log_info, ensure_ascii=False), flush=True)
+        has_image = sample.get("image") is not None
+        messages = []
+        first_user = True
+        has_assistant = False
+        assistant_texts = []
 
-    # def _prepare_sample(self, sample) -> Optional[dict]:
-    #     convs = sample.get("conversations") or []
-    #     if not convs:
-    #         return None
-    #
-    #     has_image = sample.get("image") is not None
-    #     messages = []
-    #     first_user = True
-    #     has_assistant = False
-    #     assistant_texts = []
-    #
-    #     for turn in convs:
-    #         src = turn.get("from")
-    #         text = re.sub(r"<image>\s*", "", (turn.get("value") or "").strip()).strip()
-    #
-    #         if src in {"human", "user"}:
-    #             content = []
-    #             if first_user and has_image:
-    #                 content.append({"type": "image"})
-    #             first_user = False
-    #             content.append({"type": "text", "text": text or ""})
-    #             messages.append({"role": "user", "content": content})
-    #
-    #         elif src in {"gpt", "assistant"} and text:
-    #             has_assistant = True
-    #             assistant_texts.append(text)
-    #             messages.append({
-    #                 "role": "assistant",
-    #                 "content": [{"type": "text", "text": text}],
-    #             })
-    #
-    #     if not messages or not has_assistant:
-    #         return None
-    #
-    #     rendered_text = self.processor.apply_chat_template(
-    #         messages,
-    #         tokenize=False,
-    #         add_generation_prompt=False,
-    #     )
-    #
-    #     image = sample["image"].convert("RGB") if has_image else None
-    #     item = {
-    #         "sample_id": sample.get("id"),
-    #         "has_image": has_image,
-    #         "image": image,
-    #         "text": rendered_text,
-    #         "debug_info": {
-    #             "sample_id": sample.get("id"),
-    #             "has_image": has_image,
-    #             "image_size": list(image.size) if image is not None else None,
-    #             "num_turns": len(convs),
-    #             "text_preview": rendered_text[: self.debug_max_chars],
-    #             "assistant_preview": (assistant_texts[-1][: self.debug_max_chars] if assistant_texts else ""),
-    #         },
-    #     }
-    #
-    #     if self.debug_print_samples:
-    #         print(f"[sample pid={os.getpid()}] {json.dumps(item['debug_info'], ensure_ascii=False)}", flush=True)
-    #
-    #     return item
+        for turn in convs:
+            src = turn.get("from")
+            text = re.sub(r"<image>\s*", "", (turn.get("value") or "").strip()).strip()
+
+            if src in {"human", "user"}:
+                content = []
+                if first_user and has_image:
+                    content.append({"type": "image"})
+                first_user = False
+                content.append({"type": "text", "text": text or ""})
+                messages.append({"role": "user", "content": content})
+
+            elif src in {"gpt", "assistant"} and text:
+                has_assistant = True
+                assistant_texts.append(text)
+                messages.append({
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": text}],
+                })
+
+        if not messages or not has_assistant:
+            return None
+
+        rendered_text = self.processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=False,
+        )
+
+        image = sample["image"].convert("RGB") if has_image else None
+        item = {
+            "sample_id": sample.get("id"),
+            "has_image": has_image,
+            "image": image,
+            "text": rendered_text,
+            "debug_info": {
+                "sample_id": sample.get("id"),
+                "has_image": has_image,
+                "image_size": list(image.size) if image is not None else None,
+                "num_turns": len(convs),
+                "text_preview": rendered_text[: self.debug_max_chars],
+                "assistant_preview": (assistant_texts[-1][: self.debug_max_chars] if assistant_texts else ""),
+            },
+        }
+
+        if self.debug_print_samples:
+            print(f"[sample pid={os.getpid()}] {json.dumps(item['debug_info'], ensure_ascii=False)}", flush=True)
+
+        return item
 
     def __iter__(self):
         ds = self.base_dataset
