@@ -123,7 +123,6 @@ if __name__ == "__main__":
 
     print("huggingface_hub HF_HOME =", hf_constants.HF_HOME)
     print("huggingface_hub HF_HUB_CACHE =", hf_constants.HF_HUB_CACHE)
-    import pdb;pdb.set_trace()
 
     from huggingface_hub import snapshot_download
 

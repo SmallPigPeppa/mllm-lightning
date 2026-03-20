@@ -143,7 +143,6 @@ class MultiModalDataModule(L.LightningDataModule):
         labels.masked_fill_(model_inputs["attention_mask"] == 0, self.hparams.ignore_index)
 
         image_token_id = getattr(self.processor, "image_token_id", None)
-        import pdb; pdb.set_trace()
         if image_token_id is not None:
             labels.masked_fill_(model_inputs["input_ids"] == image_token_id, self.hparams.ignore_index)
 

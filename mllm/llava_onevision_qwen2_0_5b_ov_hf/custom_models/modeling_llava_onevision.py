@@ -778,7 +778,6 @@ class LlavaOnevisionForConditionalGeneration(LlavaOnevisionPreTrainedModel, Gene
         >>> processor.batch_decode(output, skip_special_tokens=True)[0]
         "user\n\nWhat is shown in this image?\nassistant\ncat"
         ```"""
-        import pdb;pdb.set_trace()
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states

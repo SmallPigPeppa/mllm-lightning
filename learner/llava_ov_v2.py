@@ -1,8 +1,10 @@
 import torch
 import lightning as L
-from mllm.llava_onevision_qwen2_0_5b_ov_hf.custom_models.modeling_llava_onevision import LlavaOnevisionForConditionalGeneration
+from mllm.llava_onevision_qwen2_0_5b_ov_hf.custom_models.modeling_llava_onevision import \
+    LlavaOnevisionForConditionalGeneration
 from mllm.llava_onevision_qwen2_0_5b_ov_hf.custom_models.configuration_llava_onevision import LlavaOnevisionConfig
 from peft import LoraConfig, TaskType, get_peft_model
+
 
 class LlavaSFTModule(L.LightningModule):
     def __init__(
@@ -19,7 +21,6 @@ class LlavaSFTModule(L.LightningModule):
             model_name_or_path,
             local_files_only=True,
         )
-
 
         self.model = LlavaOnevisionForConditionalGeneration.from_pretrained(
             model_name_or_path,
@@ -49,13 +50,9 @@ class LlavaSFTModule(L.LightningModule):
             self.model = get_peft_model(self.model, peft_config)
             self.model.print_trainable_parameters()
 
-
-
-
     def training_step(self, batch, batch_idx):
-        outputs = self.model(**batch)
-        import pdb; pdb.set_trace()
-        loss = self.model(**{k: v for k, v in batch.items() if k != "sample_ids"}).loss
+        output = self.model(**batch)
+        loss = output.loss
         self.log(
             "train/loss",
             loss,
