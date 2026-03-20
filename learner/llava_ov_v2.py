@@ -15,7 +15,6 @@ class LlavaSFTModule(L.LightningModule):
         super().__init__()
         self.save_hyperparameters(ignore=["torch_dtype"])
         self.optim_args = optim_args
-        model_name_or_path='/ppio_net0/code/mllm-lightning/mllm/llava-onevision-qwen2-0.5b-ov-hf'
         model_config = LlavaOnevisionConfig.from_pretrained(
             model_name_or_path,
             local_files_only=True,
