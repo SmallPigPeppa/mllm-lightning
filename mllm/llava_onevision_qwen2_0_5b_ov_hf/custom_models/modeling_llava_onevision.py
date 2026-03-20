@@ -534,7 +534,6 @@ class LlavaOnevisionModel(LlavaOnevisionPreTrainedModel):
                 input_ids, inputs_embeds=inputs_embeds, image_features=image_features
             )
             inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
-            import pdb;pdb.set_trace()
 
         # Video are simply embedded and further pooled to decrease seq len
         if pixel_values_videos is not None:
@@ -566,7 +565,6 @@ class LlavaOnevisionModel(LlavaOnevisionPreTrainedModel):
             cache_position=cache_position,
             **kwargs,
         )
-        import pdb;pdb.set_trace()
 
         return LlavaOnevisionModelOutputWithPast(
             last_hidden_state=outputs.last_hidden_state,
