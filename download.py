@@ -2,7 +2,7 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 
 WORKERS = 16
-BASE_DIR = Path("/ppio_net0/code/download")
+BASE_DIR = Path("/ppio_net0/download")
 
 
 def download_model(repo_id: str, base_dir: Path = BASE_DIR) -> str:
