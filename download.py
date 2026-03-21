@@ -18,8 +18,8 @@ def download_model(repo_id: str, base_dir: str = BASE_DIR) -> str:
 
 if __name__ == "__main__":
     for repo_id in [
-        "Qwen/Qwen3-VL-2B-Instruct",
-        "llava-hf/llava-onevision-qwen2-0.5b-ov-hf",
+        # "Qwen/Qwen3-VL-2B-Instruct",
+        # "llava-hf/llava-onevision-qwen2-0.5b-ov-hf",
         "llava-hf/llava-1.5-7b-hf"
     ]:
         download_model(repo_id)
