@@ -10,8 +10,6 @@ from learner.llava_ov import LlavaSFTModule
 
 
 
-
-
 def main():
     L.seed_everything(42, workers=True)
     torch.set_float32_matmul_precision("high")
