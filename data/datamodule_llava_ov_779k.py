@@ -19,7 +19,6 @@ class MultiModalDataModule(L.LightningDataModule):
             max_length: int = 1024,
             seed: int = 42,
             stopping_strategy: str = "all_exhausted",
-            trust_remote_code: bool = True,
             cache_dir: str = "/ppio_net0/huggingface",
             ignore_index: int = -100,
     ):
@@ -32,7 +31,7 @@ class MultiModalDataModule(L.LightningDataModule):
         if self.processor is None:
             self.processor = LlavaOnevisionProcessor.from_pretrained(
                 self.hparams.model_name_or_path,
-                trust_remote_code=self.hparams.trust_remote_code,
+                trust_remote_code=True,
                 cache_dir=self.hparams.cache_dir,
             )
             if getattr(self.processor, "tokenizer", None):
@@ -72,9 +71,45 @@ class MultiModalDataModule(L.LightningDataModule):
                 stopping_strategy=self.hparams.stopping_strategy,
             )
 
+    def _get_prefix_input_ids(self, messages, image=None):
+        """Return input_ids for one message prefix using the training processor path."""
+        text = self.processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=False,
+        )
+        inputs = self.processor(
+            text=[text],
+            images=[image] if image is not None else None,
+            padding=False,
+            truncation=True,
+            max_length=self.hparams.max_length,
+            return_tensors=None,
+        )
+        return inputs["input_ids"][0]
+
+    def _build_assistant_labels(self, messages, image, input_ids_row, attention_mask_row):
+        """Keep labels only on assistant turns."""
+        ignore_index = self.hparams.ignore_index
+        seq_len = int(attention_mask_row.sum().item())
+        labels = torch.full_like(input_ids_row, ignore_index)
+
+        prefix_lens = [0]
+        for end in range(1, len(messages)):
+            prefix_ids = self._get_prefix_input_ids(messages[:end], image=image)
+            prefix_lens.append(min(len(prefix_ids), seq_len))
+        prefix_lens.append(seq_len)
+
+        for turn_idx, (start, end) in enumerate(zip(prefix_lens[:-1], prefix_lens[1:])):
+            if messages[turn_idx]["role"] == "assistant" and end > start:
+                labels[start:end] = input_ids_row[start:end]
+
+        return labels
+
     def collate_fn(self, batch):
         processor = self.processor
         texts, images, sample_ids = [], [], []
+        batch_messages, batch_image_objs = [], []
 
         image_token = getattr(processor, "image_token", "<image>")
         video_token = getattr(processor, "video_token", "<video>")
@@ -88,18 +123,17 @@ class MultiModalDataModule(L.LightningDataModule):
         for sample in batch:
             image = sample.get("image")
             need_image = image is not None
+            image_rgb = None
             messages = []
 
             for turn in sample.get("conversations", []):
                 role = role_map.get(turn.get("from"))
                 text = (turn.get("value") or "")
-
                 # Remove raw <image>/<video> markers from text.
                 # They will be added back as structured content by the chat template.
                 text = text.replace(image_token, "").replace(video_token, "").strip()
-
                 content = [{"type": "text", "text": text}]
-                # 只有第一轮 query 插入图片
+                # Insert the image only into the first user turn.
                 if role == "user" and need_image:
                     content.insert(0, {"type": "image"})
                     need_image = False
@@ -114,9 +148,12 @@ class MultiModalDataModule(L.LightningDataModule):
                 )
             )
             sample_ids.append(sample.get("id"))
+            batch_messages.append(messages)
 
             if image is not None and not need_image:
-                images.append(image.convert("RGB"))
+                image_rgb = image.convert("RGB")
+                images.append(image_rgb)
+            batch_image_objs.append(image_rgb)
 
         model_inputs = self.processor(
             text=texts,
@@ -126,17 +163,18 @@ class MultiModalDataModule(L.LightningDataModule):
             max_length=self.hparams.max_length,
             return_tensors="pt",
         )
-        # TODO: labels 应该去掉 user 输入, 其他 code, 例如 llama factory 怎么处理的？ 把label 的逻辑处理好，如果是多轮对话，那么去掉每一轮的 user输入的label
-        labels = model_inputs["input_ids"].clone()
+
+        labels = torch.stack([
+            self._build_assistant_labels(messages, image_rgb, input_ids_row, attention_mask_row)
+            for messages, image_rgb, input_ids_row, attention_mask_row in zip(
+                batch_messages,
+                batch_image_objs,
+                model_inputs["input_ids"],
+                model_inputs["attention_mask"],
+            )
+        ])
+
         labels.masked_fill_(model_inputs["attention_mask"] == 0, self.hparams.ignore_index)
-
-        image_token_id = getattr(processor, "image_token_id", None)
-        if image_token_id is not None:
-            labels.masked_fill_(model_inputs["input_ids"] == image_token_id, self.hparams.ignore_index)
-
-        video_token_id = getattr(processor, "video_token_id", None)
-        if video_token_id is not None:
-            labels.masked_fill_(model_inputs["input_ids"] == video_token_id, self.hparams.ignore_index)
 
         model_inputs["labels"] = labels
         model_inputs["sample_ids"] = sample_ids

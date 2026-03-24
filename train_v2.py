@@ -5,7 +5,8 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.strategies import DeepSpeedStrategy,DDPStrategy
 
-from data.datamodule_ov_v4 import MultiModalDataModule
+# from data.datamodule_ov_v4 import MultiModalDataModule
+from data.datamodule_llava_ov_779k import MultiModalDataModule
 from learner.llava_ov_v2 import LlavaSFTModule
 
 
