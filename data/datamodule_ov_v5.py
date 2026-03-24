@@ -1,6 +1,4 @@
-import re
 from typing import List
-
 import lightning as L
 import torch
 from torch.utils.data import DataLoader
@@ -8,6 +6,12 @@ from datasets import load_dataset, interleave_datasets
 # from transformers import AutoProcessor
 from mllm.llava_onevision_qwen2_0_5b_ov_hf.custom_models.processing_llava_onevision import LlavaOnevisionProcessor
 
+ROLE_MAP = {
+    "human": "user",
+    "user": "user",
+    "gpt": "assistant",
+    "assistant": "assistant",
+}
 
 class MultiModalDataModule(L.LightningDataModule):
     def __init__(
@@ -27,6 +31,7 @@ class MultiModalDataModule(L.LightningDataModule):
         self.save_hyperparameters()
         self.processor = None
         self.train_dataset = None
+
 
     def setup(self, stage=None):
         if self.processor is None:
@@ -73,83 +78,140 @@ class MultiModalDataModule(L.LightningDataModule):
             )
 
     def collate_fn(self, batch):
-        texts, images, sample_ids = [], [], []
+        texts, image_batches, loss_masks, sample_ids = [], [], [], []
 
         image_token = getattr(self.processor, "image_token", "<image>")
         video_token = getattr(self.processor, "video_token", "<video>")
+        max_length = self.hparams.max_length
+        ignore_index = self.hparams.ignore_index
 
         for sample in batch:
             conversations = sample.get("conversations") or []
-            if not conversations:
-                continue
+            # sample 级图片池：当 turn 没显式给图时，按 <image> 出现顺序顺延取图
+            pooled_images = sample.get("images", sample.get("image"))
+            if pooled_images is None:
+                pooled_images = []
+            elif not isinstance(pooled_images, list):
+                pooled_images = [pooled_images]
+            pooled_idx = 0
 
-            messages = []
-            used_image = False
+            messages, sample_images = [], []
             has_assistant = False
 
             for turn in conversations:
-                role = {"human": "user", "user": "user", "gpt": "assistant", "assistant": "assistant", }.get(
-                    turn.get("from"))
+                role = ROLE_MAP.get(turn.get("from"))
                 if role is None:
                     continue
 
-                text = (turn.get("value") or "").replace(image_token, "").replace(video_token, "").strip()
-                if not text:
+                # turn 级图片：支持 turn["images"] / turn["image"]
+                turn_images = turn.get("images", turn.get("image"))
+                if turn_images is None:
+                    turn_images = []
+                elif not isinstance(turn_images, list):
+                    turn_images = [turn_images]
+
+                raw_text = (turn.get("value") or "").replace(video_token, "")
+                need_images = raw_text.count(image_token)
+                raw_text = raw_text.replace(image_token, "").strip()
+
+                # turn 没带图时，从 sample 级图片池按占位符数量补图
+                if need_images > 0 and not turn_images and pooled_idx < len(pooled_images):
+                    turn_images = pooled_images[pooled_idx: pooled_idx + need_images]
+                    pooled_idx += len(turn_images)
+
+                content = [{"type": "image"} for _ in turn_images]
+                if raw_text:
+                    content.append({"type": "text", "text": raw_text})
+                if not content:
                     continue
 
-                if role == "user":
-                    content = [{"type": "text", "text": text}]
-                    if sample.get("image") is not None and not used_image:
-                        content.insert(0, {"type": "image"})
-                        used_image = True
-                    messages.append({"role": "user", "content": content})
-                else:
-                    has_assistant = True
-                    messages.append(
-                        {
-                            "role": "assistant",
-                            "content": [{"type": "text", "text": text}],
-                        }
-                    )
+                messages.append({"role": role, "content": content})
+                sample_images.extend(img.convert("RGB") for img in turn_images)
+                has_assistant |= (role == "assistant")
 
             if not messages or not has_assistant:
                 continue
 
-            texts.append(
-                self.processor.apply_chat_template(
-                    messages,
+            # 渲染完整对话
+            full_text = self.processor.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+
+            # 先对单样本编码，用于构造 assistant-only loss mask
+            one_inputs = self.processor(
+                text=[full_text],
+                images=[sample_images] if sample_images else None,
+                truncation=True,
+                max_length=max_length,
+                return_tensors="pt",
+            )
+            one_ids = one_inputs["input_ids"][0]
+            loss_mask = torch.zeros_like(one_ids, dtype=torch.bool)
+
+            # 用“前缀长度差”定位每一轮 assistant 在 token 序列中的区间
+            prefix_messages = []
+            prefix_image_count = 0
+            prev_len = 0
+
+            for msg in messages:
+                prefix_messages.append(msg)
+                prefix_image_count += sum(x["type"] == "image" for x in msg["content"])
+
+                prefix_text = self.processor.apply_chat_template(
+                    prefix_messages,
                     tokenize=False,
                     add_generation_prompt=False,
                 )
-            )
-            sample_ids.append(sample.get("id"))
+                prefix_ids = self.processor(
+                    text=[prefix_text],
+                    images=[sample_images[:prefix_image_count]] if prefix_image_count else None,
+                    truncation=True,
+                    max_length=max_length,
+                    return_tensors="pt",
+                )["input_ids"][0]
 
-            if used_image:
-                images.append(sample["image"].convert("RGB"))
+                cur_len = prefix_ids.size(0)
+                if msg["role"] == "assistant":
+                    loss_mask[prev_len:cur_len] = True
+
+                prev_len = cur_len
+                if prev_len >= one_ids.numel():
+                    break
+
+            texts.append(full_text)
+            image_batches.append(sample_images)
+            loss_masks.append(loss_mask)
+            sample_ids.append(sample.get("id"))
 
         if not texts:
             raise RuntimeError("No valid samples found in batch.")
 
+        # 批量编码；支持每个样本对应多张图
         model_inputs = self.processor(
             text=texts,
-            images=images or None,
+            images=image_batches if any(len(x) > 0 for x in image_batches) else None,
             padding=True,
             truncation=True,
-            max_length=self.hparams.max_length,
+            max_length=max_length,
             return_tensors="pt",
         )
 
-        labels = model_inputs["input_ids"].clone()
-        # TODO: labels 应该去掉 user 输入, 其他 code, 例如 llama factory 怎么处理的？
-        labels.masked_fill_(model_inputs["attention_mask"] == 0, self.hparams.ignore_index)
+        # 只保留 assistant token 的 label，其余全部置为 ignore_index
+        labels = torch.full_like(model_inputs["input_ids"], ignore_index)
+        for i, mask in enumerate(loss_masks):
+            n = min(mask.numel(), labels.size(1))
+            labels[i, :n][mask[:n]] = model_inputs["input_ids"][i, :n][mask[:n]]
 
-        image_token_id = getattr(self.processor, "image_token_id", None)
-        if image_token_id is not None:
-            labels.masked_fill_(model_inputs["input_ids"] == image_token_id, self.hparams.ignore_index)
+        # padding 不参与 loss
+        labels.masked_fill_(model_inputs["attention_mask"] == 0, ignore_index)
 
-        video_token_id = getattr(self.processor, "video_token_id", None)
-        if video_token_id is not None:
-            labels.masked_fill_(model_inputs["input_ids"] == video_token_id, self.hparams.ignore_index)
+        # 多模态占位 token 不参与 loss
+        for token_name in ("image_token_id", "video_token_id"):
+            token_id = getattr(self.processor, token_name, None)
+            if token_id is not None:
+                labels.masked_fill_(model_inputs["input_ids"] == token_id, ignore_index)
 
         model_inputs["labels"] = labels
         model_inputs["sample_ids"] = sample_ids
